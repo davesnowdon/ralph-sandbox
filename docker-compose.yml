@@ -1,0 +1,54 @@
+services:
+  ralph:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_MAJOR: "20"
+        # Pin if you want repeatability (recommended): set to a commit SHA
+        # RALPH_REF: "a1b2c3d4..."
+        RALPH_REF: "main"
+        RALPH_UID: "${UID:-1000}"
+        RALPH_GID: "${GID:-1000}"
+
+    image: ralph-sandbox:latest
+    container_name: ralph-sandbox
+
+    init: true
+
+    volumes:
+      - type: bind
+        source: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
+        target: /workspace
+
+      - type: bind
+        source: ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
+        target: /claude_config
+
+    environment:
+      - PROJECT_DIR=/workspace
+      - CLAUDE_CONFIG_DIR=/claude_config
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    restart: "no"
+
+  ralph-login:
+    image: ralph-sandbox:latest
+    init: true
+    entrypoint: ["/bin/bash"]
+    volumes:
+      - type: bind
+        source: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
+        target: /workspace
+      - type: bind
+        source: ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
+        target: /claude_config
+    environment:
+      - PROJECT_DIR=/workspace
+      - CLAUDE_CONFIG_DIR=/claude_config
