@@ -56,7 +56,7 @@ Keep stories small and focused -- each should complete within a single context w
 The simplest way is to use the wrapper from anywhere:
 
 ```bash
-/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph-sandbox
+ralph-sandbox
 ```
 
 By default the wrapper:
@@ -69,24 +69,24 @@ By default the wrapper:
 To pass Ralph arguments through:
 
 ```bash
-/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph-sandbox -- 10
+ralph-sandbox -- 10
 ```
 
 To create or reuse a worktree and launch Ralph into it:
 
 ```bash
-cd /home/dns/projects/lithos/code/lithos
-/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph-sandbox \
-  --worktree ../lithos-wt/phase1-otel \
+cd /path/to/your/project
+ralph-sandbox \
+  --worktree /path/to/your/worktree \
   --branch phase1-otel
 ```
 
 If you are not running the wrapper from inside the main repository (or an existing worktree for it), pass `--repo` explicitly:
 
 ```bash
-/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph-sandbox \
-  --repo /home/dns/projects/lithos/code/lithos \
-  --worktree /home/dns/projects/lithos/code/lithos-wt/phase1-otel \
+ralph-sandbox \
+  --repo /path/to/your/project \
+  --worktree /path/to/your/worktree  \
   --branch phase1-otel
 ```
 
