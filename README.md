@@ -53,6 +53,35 @@ Keep stories small and focused -- each should complete within a single context w
 
 ### 3. Run Ralph
 
+The simplest way is to use the wrapper from anywhere:
+
+```bash
+/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph
+```
+
+By default the wrapper:
+
+- uses the current git repository root as `PROJECT_DIR` (or the current directory if you're not in a repo)
+- uses `CLAUDE_CONFIG_DIR` from the environment, falling back to `~/.claude`
+- invokes `docker compose` against this sandbox repo, so you do not need to `cd` here first
+- detects git worktrees and mounts the shared git metadata so `git status`, commits, and branch operations work inside the container
+
+To pass Ralph arguments through:
+
+```bash
+/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph -- 10
+```
+
+To create or reuse a worktree and launch Ralph into it:
+
+```bash
+/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph \
+  --worktree /home/dns/projects/lithos/code/lithos-wt/phase1-otel \
+  --branch phase1-otel
+```
+
+You can still call Compose directly if you want:
+
 ```bash
 PROJECT_DIR=/absolute/path/to/your/project docker compose up ralph
 ```
