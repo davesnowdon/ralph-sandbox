@@ -68,8 +68,7 @@ RUN git clone https://github.com/snarktank/ralph.git /opt/ralph \
 RUN git config --global user.email "ralph@local" \
     && git config --global user.name "Ralph" \
     && git config --global core.autocrlf false \
-    && git config --global pull.rebase false \
-    && git config --global --add safe.directory /workspace
+    && git config --global pull.rebase false
 
 # ---- Entrypoint wrapper (forces --tool claude, supports PROJECT_DIR + CLAUDE_CONFIG_DIR) ----
 RUN cat > /usr/local/bin/ralph-entrypoint <<'EOF' \
@@ -92,6 +91,31 @@ if [[ ! -d "${PROJECT_DIR}" ]]; then
   echo "ERROR: PROJECT_DIR='${PROJECT_DIR}' does not exist in container." >&2
   exit 2
 fi
+
+if ! git -C "${PROJECT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "ERROR: PROJECT_DIR='${PROJECT_DIR}' is not a valid git worktree inside the container." >&2
+  echo "Check your bind mounts, especially for linked git worktrees." >&2
+  exit 2
+fi
+
+if ! git_dir="$(git -C "${PROJECT_DIR}" rev-parse --git-dir 2>/dev/null)"; then
+  echo "ERROR: Unable to resolve git dir for PROJECT_DIR='${PROJECT_DIR}'." >&2
+  exit 2
+fi
+
+if ! common_dir="$(git -C "${PROJECT_DIR}" rev-parse --git-common-dir 2>/dev/null)"; then
+  echo "ERROR: Unable to resolve git common dir for PROJECT_DIR='${PROJECT_DIR}'." >&2
+  exit 2
+fi
+
+if ! git -C "${PROJECT_DIR}" status --short >/dev/null 2>&1; then
+  echo "ERROR: Git is not functional for PROJECT_DIR='${PROJECT_DIR}' inside the container." >&2
+  echo "Resolved git dir: ${git_dir}" >&2
+  echo "Resolved git common dir: ${common_dir}" >&2
+  exit 2
+fi
+
+git config --global --add safe.directory "${PROJECT_DIR}"
 
 # Ralph expects prd.json/progress.txt/CLAUDE.md relative to ralph.sh's directory.
 # Keep those project-local under `scripts/ralph` so state stays with the mounted project.

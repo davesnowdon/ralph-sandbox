@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+SANDBOX_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd -P)"
+COMPOSE_FILE="${SANDBOX_ROOT}/docker-compose.yml"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  bin/ralph-sandbox [options] [-- ralph_args...]
+
+Options:
+  --project-dir PATH        Use an existing project directory. Defaults to the current git root or cwd.
+  --claude-config-dir PATH  Claude config directory. Defaults to $CLAUDE_CONFIG_DIR or $HOME/.claude.
+  --service NAME            Compose service to run. Defaults to ralph.
+  --worktree PATH           Create or reuse a git worktree at PATH before launch.
+  --branch NAME             Branch to create/use with --worktree.
+  --repo PATH               Main repository to use with --worktree. Defaults to the current repo root.
+  --build                   Pass --build to docker compose run.
+  -h, --help                Show this help.
+
+Examples:
+  bin/ralph-sandbox
+  bin/ralph-sandbox -- 10
+  cd /path/to/repo && bin/ralph-sandbox --worktree ../repo-wt/phase1-otel --branch phase1-otel
+  bin/ralph-sandbox --repo /path/to/repo --worktree /path/to/repo-wt/phase1-otel --branch phase1-otel
+EOF
+}
+
+abs_existing_dir() {
+  local path="$1"
+  if [[ ! -d "${path}" ]]; then
+    echo "ERROR: Directory does not exist: ${path}" >&2
+    exit 2
+  fi
+  cd -- "${path}" && pwd -P
+}
+
+abs_path_allow_missing() {
+  local path="$1"
+  local dir base
+  dir="$(dirname -- "${path}")"
+  base="$(basename -- "${path}")"
+  dir="$(cd -- "${dir}" && pwd -P)"
+  printf '%s/%s\n' "${dir}" "${base}"
+}
+
+git_repo_root() {
+  local path="$1"
+  git -C "${path}" rev-parse --show-toplevel 2>/dev/null || true
+}
+
+git_common_dir() {
+  local path="$1"
+  local common
+  common="$(git -C "${path}" rev-parse --git-common-dir 2>/dev/null || true)"
+  if [[ -z "${common}" ]]; then
+    return 0
+  fi
+  if [[ "${common}" = /* ]]; then
+    printf '%s\n' "${common}"
+    return 0
+  fi
+  cd -- "${path}" && cd -- "${common}" && pwd -P
+}
+
+project_dir="${PROJECT_DIR:-}"
+claude_config_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
+service="ralph"
+create_worktree=""
+worktree_branch=""
+worktree_repo=""
+build_flag=0
+declare -a ralph_args=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project-dir)
+      project_dir="$2"
+      shift 2
+      ;;
+    --claude-config-dir)
+      claude_config_dir="$2"
+      shift 2
+      ;;
+    --service)
+      service="$2"
+      shift 2
+      ;;
+    --worktree)
+      create_worktree="$2"
+      shift 2
+      ;;
+    --branch)
+      worktree_branch="$2"
+      shift 2
+      ;;
+    --repo)
+      worktree_repo="$2"
+      shift 2
+      ;;
+    --build)
+      build_flag=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      ralph_args=("$@")
+      break
+      ;;
+    *)
+      ralph_args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ -n "${create_worktree}" ]]; then
+  if [[ -n "${project_dir}" ]]; then
+    echo "ERROR: Use either --project-dir or --worktree, not both." >&2
+    exit 2
+  fi
+  if [[ -z "${worktree_repo}" ]]; then
+    worktree_repo="$(git_repo_root "${PWD}")"
+  fi
+  if [[ -z "${worktree_repo}" ]]; then
+    echo "ERROR: --worktree needs a main git repository. Run from inside the repo/worktree, or pass --repo /path/to/repo." >&2
+    exit 2
+  fi
+
+  worktree_repo="$(abs_existing_dir "${worktree_repo}")"
+  project_dir="$(abs_path_allow_missing "${create_worktree}")"
+
+  if [[ ! -d "${project_dir}" ]]; then
+    if [[ -n "${worktree_branch}" ]]; then
+      if git -C "${worktree_repo}" show-ref --verify --quiet "refs/heads/${worktree_branch}"; then
+        git -C "${worktree_repo}" worktree add "${project_dir}" "${worktree_branch}"
+      else
+        git -C "${worktree_repo}" worktree add -b "${worktree_branch}" "${project_dir}"
+      fi
+    else
+      git -C "${worktree_repo}" worktree add "${project_dir}"
+    fi
+  fi
+fi
+
+if [[ -z "${project_dir}" ]]; then
+  project_dir="$(git_repo_root "${PWD}")"
+  if [[ -z "${project_dir}" ]]; then
+    project_dir="$(pwd -P)"
+  fi
+fi
+
+project_dir="$(abs_existing_dir "${project_dir}")"
+claude_config_dir="$(abs_existing_dir "${claude_config_dir}")"
+
+common_dir="$(git_common_dir "${project_dir}")"
+needs_common_mount=0
+if [[ -n "${common_dir}" && "${common_dir}" != "${project_dir}/.git" ]]; then
+  common_dir="$(abs_existing_dir "${common_dir}")"
+  needs_common_mount=1
+fi
+
+tmp_dir="${SANDBOX_ROOT}/.tmp"
+mkdir -p -- "${tmp_dir}"
+tmp_override="$(mktemp "${tmp_dir}/compose.override.XXXXXX.yml")"
+cleanup() {
+  rm -f -- "${tmp_override}"
+}
+trap cleanup EXIT
+
+cat > "${tmp_override}" <<EOF
+services:
+  ${service}:
+EOF
+
+if [[ ${needs_common_mount} -eq 1 ]]; then
+  cat >> "${tmp_override}" <<EOF
+    volumes:
+      - type: bind
+        source: ${common_dir}
+        target: ${common_dir}
+EOF
+fi
+
+declare -a compose_cmd=(
+  docker compose
+  --project-directory "${SANDBOX_ROOT}"
+  -f "${COMPOSE_FILE}"
+  -f "${tmp_override}"
+  run
+  --rm
+)
+
+if [[ ${build_flag} -eq 1 ]]; then
+  compose_cmd+=(--build)
+fi
+
+compose_cmd+=("${service}")
+
+env \
+  PROJECT_DIR="${project_dir}" \
+  CLAUDE_CONFIG_DIR="${claude_config_dir}" \
+  "${compose_cmd[@]}" \
+  "${ralph_args[@]}"

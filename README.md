@@ -56,7 +56,7 @@ Keep stories small and focused -- each should complete within a single context w
 The simplest way is to use the wrapper from anywhere:
 
 ```bash
-/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph
+/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph-sandbox
 ```
 
 By default the wrapper:
@@ -69,13 +69,23 @@ By default the wrapper:
 To pass Ralph arguments through:
 
 ```bash
-/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph -- 10
+/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph-sandbox -- 10
 ```
 
 To create or reuse a worktree and launch Ralph into it:
 
 ```bash
-/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph \
+cd /home/dns/projects/lithos/code/lithos
+/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph-sandbox \
+  --worktree ../lithos-wt/phase1-otel \
+  --branch phase1-otel
+```
+
+If you are not running the wrapper from inside the main repository (or an existing worktree for it), pass `--repo` explicitly:
+
+```bash
+/home/dns/ai-ml/agents/ralph-sandbox/bin/ralph-sandbox \
+  --repo /home/dns/projects/lithos/code/lithos \
   --worktree /home/dns/projects/lithos/code/lithos-wt/phase1-otel \
   --branch phase1-otel
 ```
@@ -166,6 +176,13 @@ Ralph stores its working state in `<project>/scripts/ralph/`:
 | `CLAUDE.md` | Prompt template for Claude Code, copied from upstream |
 | `prd.json` | User stories and completion status (generated via `/prd` and `/ralph` skills) |
 | `progress.txt` | Append-only log of learnings across iterations |
+
+If you do not want the copied runtime files tracked in your project, add these entries to your project's `.gitignore`:
+
+```gitignore
+scripts/ralph/ralph.sh
+scripts/ralph/CLAUDE.md
+```
 
 ## Tips
 
