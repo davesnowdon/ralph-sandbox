@@ -93,8 +93,8 @@ if [[ ! -d "${PROJECT_DIR}" ]]; then
 fi
 
 if ! git -C "${PROJECT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "ERROR: PROJECT_DIR='${PROJECT_DIR}' is not a valid git worktree inside the container." >&2
-  echo "Check your bind mounts, especially for linked git worktrees." >&2
+  echo "ERROR: PROJECT_DIR='${PROJECT_DIR}' is not inside a valid Git working tree in the container." >&2
+  echo "Check your bind mounts. Linked git worktrees need the shared git metadata mounted too." >&2
   exit 2
 fi
 
