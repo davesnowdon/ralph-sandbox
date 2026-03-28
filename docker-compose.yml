@@ -2,7 +2,7 @@ services:
   ralph:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: dockerfiles/python/Dockerfile
       args:
         NODE_MAJOR: "20"
         # Pin if you want repeatability (recommended): set to a commit SHA

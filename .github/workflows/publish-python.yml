@@ -1,0 +1,43 @@
+name: Publish Python Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dockerfiles/python/**'
+      - '.github/workflows/publish-python.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: dockerfiles/python/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            davesnowdon/ralph-sandbox:python-3.12
+            davesnowdon/ralph-sandbox:python-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
