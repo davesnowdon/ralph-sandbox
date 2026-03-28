@@ -75,44 +75,15 @@ RUN git config --system user.email "ralph@local" \
     && git config --system core.autocrlf false \
     && git config --system pull.rebase false
 
-# ---- Entrypoint wrapper (configurable tool via RALPH_TOOL, supports PROJECT_DIR + config dirs) ----
+# ---- Entrypoint wrapper (configurable tool via RALPH_TOOL, supports PROJECT_DIR + config dirs + SESSION_RUNNER) ----
 RUN cat > /usr/local/bin/ralph-entrypoint <<'EOF' \
  && chmod +x /usr/local/bin/ralph-entrypoint
 #!/usr/bin/env bash
 set -euo pipefail
 
-RALPH_TOOL="${RALPH_TOOL:-claude}"
 PROJECT_DIR="${PROJECT_DIR:-/workspace}"
 
-# Validate config directory for the selected tool.
-case "${RALPH_TOOL}" in
-  claude)
-    CLAUDE_CFG="${CLAUDE_CONFIG_DIR:-}"
-    if [[ -z "${CLAUDE_CFG}" ]]; then
-      echo "ERROR: CLAUDE_CONFIG_DIR is not set (must be mounted in)." >&2
-      exit 2
-    fi
-    if [[ ! -d "${CLAUDE_CFG}" ]]; then
-      echo "ERROR: CLAUDE_CONFIG_DIR='${CLAUDE_CFG}' does not exist in container." >&2
-      exit 2
-    fi
-    ;;
-  codex)
-    CODEX_CFG="${CODEX_HOME:-}"
-    if [[ -z "${CODEX_CFG}" ]]; then
-      echo "ERROR: CODEX_HOME is not set (must be mounted in)." >&2
-      exit 2
-    fi
-    if [[ ! -d "${CODEX_CFG}" ]]; then
-      echo "ERROR: CODEX_HOME='${CODEX_CFG}' does not exist in container." >&2
-      exit 2
-    fi
-    ;;
-  *)
-    echo "ERROR: RALPH_TOOL='${RALPH_TOOL}' is not supported. Use 'claude' or 'codex'." >&2
-    exit 2
-    ;;
-esac
+# ---- Phase A: Universal validation (always runs) ----
 
 if [[ ! -d "${PROJECT_DIR}" ]]; then
   echo "ERROR: PROJECT_DIR='${PROJECT_DIR}' does not exist in container." >&2
@@ -143,6 +114,56 @@ if ! git -C "${PROJECT_DIR}" status --short >/dev/null 2>&1; then
 fi
 
 git config --global --add safe.directory "${PROJECT_DIR}"
+
+# ---- Phase B: Custom session runner (if provided) ----
+
+SESSION_RUNNER="${SESSION_RUNNER:-}"
+
+if [[ -n "${SESSION_RUNNER}" ]]; then
+  if [[ ! -f "${SESSION_RUNNER}" ]]; then
+    echo "ERROR: SESSION_RUNNER='${SESSION_RUNNER}' does not exist." >&2
+    exit 2
+  fi
+  if [[ ! -x "${SESSION_RUNNER}" ]]; then
+    echo "ERROR: SESSION_RUNNER='${SESSION_RUNNER}' is not executable." >&2
+    exit 2
+  fi
+  exec "${SESSION_RUNNER}" "$@"
+fi
+
+# ---- Phase C: Default runner (built-in Ralph loop) ----
+
+RALPH_TOOL="${RALPH_TOOL:-claude}"
+
+# Validate config directory for the selected tool.
+case "${RALPH_TOOL}" in
+  claude)
+    CLAUDE_CFG="${CLAUDE_CONFIG_DIR:-}"
+    if [[ -z "${CLAUDE_CFG}" ]]; then
+      echo "ERROR: CLAUDE_CONFIG_DIR is not set (must be mounted in)." >&2
+      exit 2
+    fi
+    if [[ ! -d "${CLAUDE_CFG}" ]]; then
+      echo "ERROR: CLAUDE_CONFIG_DIR='${CLAUDE_CFG}' does not exist in container." >&2
+      exit 2
+    fi
+    ;;
+  codex)
+    CODEX_CFG="${CODEX_HOME:-}"
+    if [[ -z "${CODEX_CFG}" ]]; then
+      echo "ERROR: CODEX_HOME is not set (must be mounted in)." >&2
+      exit 2
+    fi
+    if [[ ! -d "${CODEX_CFG}" ]]; then
+      echo "ERROR: CODEX_HOME='${CODEX_CFG}' does not exist in container." >&2
+      exit 2
+    fi
+    ;;
+  *)
+    echo "ERROR: RALPH_TOOL='${RALPH_TOOL}' is not supported. Use 'claude' or 'codex'." >&2
+    exit 2
+    ;;
+esac
 
 # Ralph expects prd.json/progress.txt/CLAUDE.md relative to ralph.sh's directory.
 # Keep those project-local under `scripts/ralph` so state stays with the mounted project.
