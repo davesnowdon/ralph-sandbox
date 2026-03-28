@@ -79,8 +79,6 @@ To pass Ralph arguments through:
 ralph-sandbox -- 10
 ```
 
-If you run the wrapper from inside a pre-existing git worktree, the sandbox automatically detects and mounts the shared git metadata so that `git status`, commits, and branch operations work inside the container. No extra flags needed.
-
 You can still call Compose directly if you want:
 
 ```bash
