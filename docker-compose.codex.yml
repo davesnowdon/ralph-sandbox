@@ -1,0 +1,12 @@
+services:
+  ralph:
+    volumes:
+      - type: bind
+        source: ${CODEX_CONFIG_DIR:-${HOME}/.codex}
+        target: /codex_config
+
+  ralph-login:
+    volumes:
+      - type: bind
+        source: ${CODEX_CONFIG_DIR:-${HOME}/.codex}
+        target: /codex_config

@@ -112,12 +112,19 @@ if [[ -z "${project_dir}" ]]; then
 fi
 
 project_dir="$(abs_existing_dir "${project_dir}")"
-claude_config_dir="$(abs_existing_dir "${claude_config_dir}")"
-
-if [[ "${ralph_tool}" == "codex" ]]; then
-  mkdir -p "${codex_config_dir}"
-  codex_config_dir="$(abs_existing_dir "${codex_config_dir}")"
-fi
+case "${ralph_tool}" in
+  claude)
+    claude_config_dir="$(abs_existing_dir "${claude_config_dir}")"
+    ;;
+  codex)
+    mkdir -p "${codex_config_dir}"
+    codex_config_dir="$(abs_existing_dir "${codex_config_dir}")"
+    ;;
+  *)
+    echo "ERROR: Unsupported tool: ${ralph_tool}. Use 'claude' or 'codex'." >&2
+    exit 2
+    ;;
+esac
 
 common_dir="$(git_common_dir "${project_dir}")"
 needs_common_mount=0
@@ -139,11 +146,19 @@ services:
   ${service}:
 EOF
 
-# Collect extra volume mounts (git common dir, codex config).
+# Collect extra volume mounts (tool config, git common dir).
 has_extra_volumes=0
-if [[ ${needs_common_mount} -eq 1 ]] || [[ "${ralph_tool}" == "codex" ]]; then
+if [[ ${needs_common_mount} -eq 1 ]] || [[ "${ralph_tool}" == "claude" ]] || [[ "${ralph_tool}" == "codex" ]]; then
   has_extra_volumes=1
   echo "    volumes:" >> "${tmp_override}"
+fi
+
+if [[ "${ralph_tool}" == "claude" ]]; then
+  cat >> "${tmp_override}" <<EOF
+      - type: bind
+        source: ${claude_config_dir}
+        target: /claude_config
+EOF
 fi
 
 if [[ ${needs_common_mount} -eq 1 ]]; then

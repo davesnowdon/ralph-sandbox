@@ -2,12 +2,12 @@ services:
   ralph:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: dockerfiles/python/Dockerfile
       args:
         NODE_MAJOR: "20"
         # Pin if you want repeatability (recommended): set to a commit SHA
         # RALPH_REF: "a1b2c3d4..."
-        RALPH_REF: "main"
+        RALPH_REF: "6c53cb0"
         RALPH_UID: "${UID:-1000}"
         RALPH_GID: "${GID:-1000}"
 
@@ -21,10 +21,6 @@ services:
       - type: bind
         source: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
         target: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
-
-      - type: bind
-        source: ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
-        target: /claude_config
 
     environment:
       - PROJECT_DIR=${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
@@ -50,9 +46,6 @@ services:
       - type: bind
         source: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
         target: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
-      - type: bind
-        source: ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
-        target: /claude_config
     environment:
       - PROJECT_DIR=${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
       - RALPH_TOOL=${RALPH_TOOL:-claude}

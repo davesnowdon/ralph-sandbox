@@ -1,0 +1,12 @@
+services:
+  ralph:
+    volumes:
+      - type: bind
+        source: ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
+        target: /claude_config
+
+  ralph-login:
+    volumes:
+      - type: bind
+        source: ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
+        target: /claude_config
