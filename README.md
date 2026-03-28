@@ -82,8 +82,7 @@ ralph-sandbox -- 10
 To run Ralph from inside an already-created linked git worktree:
 
 ```bash
-cd /path/to/your/project-worktree
-ralph-sandbox
+ralph-sandbox --project-dir /path/to/your/project-worktree
 ```
 
 You can still call Compose directly if you want:
