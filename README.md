@@ -71,7 +71,7 @@ By default the wrapper:
 - uses `CLAUDE_CONFIG_DIR` from the environment, falling back to `~/.claude`
 - when `--tool codex` is specified, mounts `CODEX_CONFIG_DIR` (or `~/.codex`) into the container
 - invokes `docker compose` against this sandbox repo, so you do not need to `cd` here first
-- detects git worktrees and mounts the shared git metadata so `git status`, commits, and branch operations work inside the container
+- supports running inside an existing linked git worktree by mounting the shared git metadata so `git status`, commits, and branch operations work inside the container
 
 To pass Ralph arguments through:
 
@@ -79,22 +79,10 @@ To pass Ralph arguments through:
 ralph-sandbox -- 10
 ```
 
-To create or reuse a worktree and launch Ralph into it:
+To run Ralph from inside an already-created linked git worktree:
 
 ```bash
-cd /path/to/your/project
-ralph-sandbox \
-  --worktree /path/to/your/worktree \
-  --branch phase1-otel
-```
-
-If you are not running the wrapper from inside the main repository (or an existing worktree for it), pass `--repo` explicitly:
-
-```bash
-ralph-sandbox \
-  --repo /path/to/your/project \
-  --worktree /path/to/your/worktree  \
-  --branch phase1-otel
+ralph-sandbox --project-dir /path/to/your/project-worktree
 ```
 
 You can still call Compose directly if you want:
