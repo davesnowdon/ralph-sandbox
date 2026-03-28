@@ -68,7 +68,7 @@ ralph-sandbox --tool codex
 By default the wrapper:
 
 - uses the current git repository root as `PROJECT_DIR` (or the current directory if you're not in a repo)
-- uses `CLAUDE_CONFIG_DIR` from the environment, falling back to `~/.claude`
+- when `--tool claude` is specified, mounts `CLAUDE_CONFIG_DIR` from the environment, falling back to `~/.claude`
 - when `--tool codex` is specified, mounts `CODEX_CONFIG_DIR` (or `~/.codex`) into the container
 - invokes `docker compose` against this sandbox repo, so you do not need to `cd` here first
 - supports running inside an existing linked git worktree by mounting the shared git metadata so `git status`, commits, and branch operations work inside the container
@@ -85,27 +85,26 @@ To run Ralph from inside an already-created linked git worktree:
 ralph-sandbox --project-dir /path/to/your/project-worktree
 ```
 
-You can still call Compose directly if you want:
-
-```bash
-PROJECT_DIR=/absolute/path/to/your/project docker compose up ralph
-```
-
-Or with an explicit Claude config path:
+You can still call Compose directly if you want, but the base `docker-compose.yml` intentionally leaves tool config mounts to the wrapper or an override file:
 
 ```bash
 PROJECT_DIR=/absolute/path/to/your/project \
-CLAUDE_CONFIG_DIR=$HOME/.claude \
-docker compose up ralph
+docker compose -f docker-compose.yml -f docker-compose.claude.yml up ralph
 ```
 
-To use Codex via Compose directly, you need to mount the Codex config directory yourself via an override file, since the base `docker-compose.yml` does not include the Codex mount (to avoid failing when `~/.codex` doesn't exist):
+For Claude Code, add an override that mounts your Claude config directory:
 
-```bash
-PROJECT_DIR=/absolute/path/to/your/project \
-RALPH_TOOL=codex \
-docker compose -f docker-compose.yml -f docker-compose.codex.yml up ralph
+```yaml
+# docker-compose.claude.yml
+services:
+  ralph:
+    volumes:
+      - type: bind
+        source: ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
+        target: /claude_config
 ```
+
+For Codex, use a similar override that mounts `${CODEX_CONFIG_DIR:-${HOME}/.codex}` to `/codex_config`.
 
 Pass iteration count and other arguments after the service name:
 
@@ -137,7 +136,7 @@ PROJECT_DIR=/absolute/path/to/your/project docker compose run ralph-login
 | Argument | Default | Description |
 |---|---|---|
 | `NODE_MAJOR` | `20` | Node.js major version |
-| `RALPH_REF` | `main` | Git ref for the upstream Ralph repository (use a commit SHA for reproducibility) |
+| `RALPH_REF` | `6c53cb0` | Pinned upstream Ralph commit used by default |
 | `RALPH_UID` | `1000` | UID for the non-root `ralph` user inside the container |
 | `RALPH_GID` | `1000` | GID for the non-root `ralph` group inside the container |
 
@@ -148,6 +147,10 @@ To pin Ralph to a specific version:
 args:
   RALPH_REF: "a1b2c3d"  # commit SHA
 ```
+
+## CI/CD
+
+Pull requests build the Docker image to validate that it still compiles. Docker Hub pushes only happen from GitHub Releases, and the published image tag matches the release tag.
 
 ## Container Details
 

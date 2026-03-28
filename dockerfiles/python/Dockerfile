@@ -1,13 +1,14 @@
 # syntax=docker/dockerfile:1.7
 
-FROM python:3.12-slim
+ARG PYTHON_IMAGE=python:3.12.11-slim-bookworm
+FROM ${PYTHON_IMAGE}
 
 LABEL org.opencontainers.image.title="ralph-sandbox"
 LABEL org.opencontainers.image.description="Ralph agentic loop sandbox with Claude Code + OpenAI Codex CLI support and modern Python tooling (uv/hatch/ruff/pytest/mypy)"
 LABEL org.opencontainers.image.source="https://github.com/davesnowdon/ralph-sandbox"
 
 ARG NODE_MAJOR=20
-ARG RALPH_REF=main
+ARG RALPH_REF=6c53cb0
 ARG RALPH_UID=1000
 ARG RALPH_GID=1000
 
@@ -69,10 +70,10 @@ RUN git clone https://github.com/snarktank/ralph.git /opt/ralph \
     && chmod +x /opt/ralph/ralph.sh
 
 # ---- Git defaults (agent-friendly) ----
-RUN git config --global user.email "ralph@local" \
-    && git config --global user.name "Ralph" \
-    && git config --global core.autocrlf false \
-    && git config --global pull.rebase false
+RUN git config --system user.email "ralph@local" \
+    && git config --system user.name "Ralph" \
+    && git config --system core.autocrlf false \
+    && git config --system pull.rebase false
 
 # ---- Entrypoint wrapper (configurable tool via RALPH_TOOL, supports PROJECT_DIR + config dirs) ----
 RUN cat > /usr/local/bin/ralph-entrypoint <<'EOF' \
