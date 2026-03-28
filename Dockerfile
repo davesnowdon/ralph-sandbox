@@ -3,7 +3,7 @@
 FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="ralph-sandbox"
-LABEL org.opencontainers.image.description="Ralph agentic loop sandbox pinned to Claude Code only + modern Python tooling (uv/hatch/ruff/pytest/mypy)"
+LABEL org.opencontainers.image.description="Ralph agentic loop sandbox with Claude Code + OpenAI Codex CLI support and modern Python tooling (uv/hatch/ruff/pytest/mypy)"
 LABEL org.opencontainers.image.source="https://github.com/davesnowdon/ralph-sandbox"
 
 ARG NODE_MAJOR=20
@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       procps \
     && rm -rf /var/lib/apt/lists/*
 
-# ---- Node.js (for Claude Code) ----
+# ---- Node.js (for Claude Code + Codex CLI) ----
 RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
     && apt-get update && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
@@ -40,6 +40,10 @@ RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
 # ---- Claude Code CLI ----
 RUN npm install -g @anthropic-ai/claude-code \
     && claude --version
+
+# ---- OpenAI Codex CLI ----
+RUN npm install -g @openai/codex \
+    && codex --version
 
 # ---- Modern Python tooling (uv + hatch/ruff/pytest/mypy) ----
 # Install uv (standalone), then install tools into /usr/local/bin so they're on PATH for all users.
@@ -70,23 +74,45 @@ RUN git config --global user.email "ralph@local" \
     && git config --global core.autocrlf false \
     && git config --global pull.rebase false
 
-# ---- Entrypoint wrapper (forces --tool claude, supports PROJECT_DIR + CLAUDE_CONFIG_DIR) ----
+# ---- Entrypoint wrapper (configurable tool via RALPH_TOOL, supports PROJECT_DIR + config dirs) ----
 RUN cat > /usr/local/bin/ralph-entrypoint <<'EOF' \
  && chmod +x /usr/local/bin/ralph-entrypoint
 #!/usr/bin/env bash
 set -euo pipefail
 
+RALPH_TOOL="${RALPH_TOOL:-claude}"
 PROJECT_DIR="${PROJECT_DIR:-/workspace}"
-CLAUDE_CFG="${CLAUDE_CONFIG_DIR:-}"
 
-if [[ -z "${CLAUDE_CFG}" ]]; then
-  echo "ERROR: CLAUDE_CONFIG_DIR is not set (must be mounted in)." >&2
-  exit 2
-fi
-if [[ ! -d "${CLAUDE_CFG}" ]]; then
-  echo "ERROR: CLAUDE_CONFIG_DIR='${CLAUDE_CFG}' does not exist in container." >&2
-  exit 2
-fi
+# Validate config directory for the selected tool.
+case "${RALPH_TOOL}" in
+  claude)
+    CLAUDE_CFG="${CLAUDE_CONFIG_DIR:-}"
+    if [[ -z "${CLAUDE_CFG}" ]]; then
+      echo "ERROR: CLAUDE_CONFIG_DIR is not set (must be mounted in)." >&2
+      exit 2
+    fi
+    if [[ ! -d "${CLAUDE_CFG}" ]]; then
+      echo "ERROR: CLAUDE_CONFIG_DIR='${CLAUDE_CFG}' does not exist in container." >&2
+      exit 2
+    fi
+    ;;
+  codex)
+    CODEX_CFG="${CODEX_HOME:-}"
+    if [[ -z "${CODEX_CFG}" ]]; then
+      echo "ERROR: CODEX_HOME is not set (must be mounted in)." >&2
+      exit 2
+    fi
+    if [[ ! -d "${CODEX_CFG}" ]]; then
+      echo "ERROR: CODEX_HOME='${CODEX_CFG}' does not exist in container." >&2
+      exit 2
+    fi
+    ;;
+  *)
+    echo "ERROR: RALPH_TOOL='${RALPH_TOOL}' is not supported. Use 'claude' or 'codex'." >&2
+    exit 2
+    ;;
+esac
+
 if [[ ! -d "${PROJECT_DIR}" ]]; then
   echo "ERROR: PROJECT_DIR='${PROJECT_DIR}' does not exist in container." >&2
   exit 2
@@ -126,7 +152,7 @@ cp -f /opt/ralph/ralph.sh "${RALPH_HOME}/ralph.sh"
 cp -f /opt/ralph/CLAUDE.md "${RALPH_HOME}/CLAUDE.md"
 chmod +x "${RALPH_HOME}/ralph.sh"
 
-# Strip any user-provided --tool flags and force --tool claude.
+# Strip any user-provided --tool flags and inject --tool $RALPH_TOOL.
 FILTERED_ARGS=()
 skip_next=0
 for arg in "$@"; do
@@ -141,7 +167,7 @@ for arg in "$@"; do
   esac
 done
 
-exec "${RALPH_HOME}/ralph.sh" --tool claude "${FILTERED_ARGS[@]}"
+exec "${RALPH_HOME}/ralph.sh" --tool "${RALPH_TOOL}" "${FILTERED_ARGS[@]}"
 EOF
 
 # ---- Workspace ----

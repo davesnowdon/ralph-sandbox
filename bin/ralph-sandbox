@@ -12,7 +12,9 @@ Usage:
 
 Options:
   --project-dir PATH        Use an existing project directory. Defaults to the current git root or cwd.
+  --tool NAME               Tool to use: claude or codex. Defaults to $RALPH_TOOL or claude.
   --claude-config-dir PATH  Claude config directory. Defaults to $CLAUDE_CONFIG_DIR or $HOME/.claude.
+  --codex-config-dir PATH   Codex config directory. Defaults to $CODEX_CONFIG_DIR or $HOME/.codex.
   --service NAME            Compose service to run. Defaults to ralph.
   --worktree PATH           Create or reuse a git worktree at PATH before launch.
   --branch NAME             Branch to create/use with --worktree.
@@ -22,6 +24,7 @@ Options:
 
 Examples:
   bin/ralph-sandbox
+  bin/ralph-sandbox --tool codex
   bin/ralph-sandbox -- 10
   cd /path/to/repo && bin/ralph-sandbox --worktree ../repo-wt/phase1-otel --branch phase1-otel
   bin/ralph-sandbox --repo /path/to/repo --worktree /path/to/repo-wt/phase1-otel --branch phase1-otel
@@ -66,7 +69,9 @@ git_common_dir() {
 }
 
 project_dir="${PROJECT_DIR:-}"
+ralph_tool="${RALPH_TOOL:-claude}"
 claude_config_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
+codex_config_dir="${CODEX_CONFIG_DIR:-${HOME}/.codex}"
 service="ralph"
 create_worktree=""
 worktree_branch=""
@@ -80,8 +85,16 @@ while [[ $# -gt 0 ]]; do
       project_dir="$2"
       shift 2
       ;;
+    --tool)
+      ralph_tool="$2"
+      shift 2
+      ;;
     --claude-config-dir)
       claude_config_dir="$2"
+      shift 2
+      ;;
+    --codex-config-dir)
+      codex_config_dir="$2"
       shift 2
       ;;
     --service)
@@ -159,6 +172,11 @@ fi
 project_dir="$(abs_existing_dir "${project_dir}")"
 claude_config_dir="$(abs_existing_dir "${claude_config_dir}")"
 
+if [[ "${ralph_tool}" == "codex" ]]; then
+  mkdir -p "${codex_config_dir}"
+  codex_config_dir="$(abs_existing_dir "${codex_config_dir}")"
+fi
+
 common_dir="$(git_common_dir "${project_dir}")"
 needs_common_mount=0
 if [[ -n "${common_dir}" && "${common_dir}" != "${project_dir}/.git" ]]; then
@@ -179,12 +197,26 @@ services:
   ${service}:
 EOF
 
+# Collect extra volume mounts (git common dir, codex config).
+has_extra_volumes=0
+if [[ ${needs_common_mount} -eq 1 ]] || [[ "${ralph_tool}" == "codex" ]]; then
+  has_extra_volumes=1
+  echo "    volumes:" >> "${tmp_override}"
+fi
+
 if [[ ${needs_common_mount} -eq 1 ]]; then
   cat >> "${tmp_override}" <<EOF
-    volumes:
       - type: bind
         source: ${common_dir}
         target: ${common_dir}
+EOF
+fi
+
+if [[ "${ralph_tool}" == "codex" ]]; then
+  cat >> "${tmp_override}" <<EOF
+      - type: bind
+        source: ${codex_config_dir}
+        target: /codex_config
 EOF
 fi
 
@@ -205,6 +237,8 @@ compose_cmd+=("${service}")
 
 env \
   PROJECT_DIR="${project_dir}" \
+  RALPH_TOOL="${ralph_tool}" \
   CLAUDE_CONFIG_DIR="${claude_config_dir}" \
+  CODEX_CONFIG_DIR="${codex_config_dir}" \
   "${compose_cmd[@]}" \
   "${ralph_args[@]}"
