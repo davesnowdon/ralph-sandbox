@@ -1,6 +1,6 @@
 # ralph-sandbox
 
-A Docker-based sandbox for running the [Ralph](https://github.com/snarktank/ralph) autonomous AI agent loop, pinned to use [Claude Code](https://docs.anthropic.com/en/docs/claude-code) as the exclusive coding tool.
+A Docker-based sandbox for running the [Ralph](https://github.com/snarktank/ralph) autonomous AI agent loop with support for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [OpenAI Codex CLI](https://developers.openai.com/codex/cli) as coding tools.
 
 Ralph is an autonomous agent loop that iteratively implements software features by reading a structured PRD (`prd.json`), selecting the highest-priority incomplete story, implementing it, running quality checks, committing changes, and repeating until all stories pass. Each iteration spawns a fresh AI instance with clean context -- only git history, a learnings file (`progress.txt`), and task statuses carry forward between iterations.
 
@@ -11,8 +11,8 @@ This sandbox wraps Ralph in a hardened Docker container with modern Python tooli
 ```
 ralph-sandbox (Docker container)
   └─ ralph.sh (orchestration loop from upstream Ralph)
-       └─ Claude Code CLI (AI coding tool)
-            └─ Claude (LLM)
+       └─ Claude Code CLI or OpenAI Codex CLI (selected via RALPH_TOOL)
+            └─ Claude / OpenAI (LLM)
 ```
 
 Each iteration of the loop:
@@ -29,7 +29,7 @@ Each iteration of the loop:
 ## Prerequisites
 
 - Docker and Docker Compose
-- A valid Claude Code configuration directory (typically `~/.claude`) with API credentials
+- A valid Claude Code configuration directory (typically `~/.claude`) with API credentials, **and/or** a valid Codex configuration directory (typically `~/.codex`) with credentials
 - A project directory with a `scripts/ralph/prd.json` file (generate one using the `/prd` and `/ralph` Claude Code skills)
 
 ## Quick Start
@@ -59,10 +59,17 @@ The simplest way is to use the wrapper from anywhere:
 ralph-sandbox
 ```
 
+To use OpenAI Codex instead of Claude Code:
+
+```bash
+ralph-sandbox --tool codex
+```
+
 By default the wrapper:
 
 - uses the current git repository root as `PROJECT_DIR` (or the current directory if you're not in a repo)
 - uses `CLAUDE_CONFIG_DIR` from the environment, falling back to `~/.claude`
+- when `--tool codex` is specified, mounts `CODEX_CONFIG_DIR` (or `~/.codex`) into the container
 - invokes `docker compose` against this sandbox repo, so you do not need to `cd` here first
 - detects git worktrees and mounts the shared git metadata so `git status`, commits, and branch operations work inside the container
 
@@ -104,6 +111,14 @@ CLAUDE_CONFIG_DIR=$HOME/.claude \
 docker compose up ralph
 ```
 
+To use Codex via Compose directly, you need to mount the Codex config directory yourself via an override file, since the base `docker-compose.yml` does not include the Codex mount (to avoid failing when `~/.codex` doesn't exist):
+
+```bash
+PROJECT_DIR=/absolute/path/to/your/project \
+RALPH_TOOL=codex \
+docker compose -f docker-compose.yml -f docker-compose.codex.yml up ralph
+```
+
 Pass iteration count and other arguments after the service name:
 
 ```bash
@@ -125,7 +140,9 @@ PROJECT_DIR=/absolute/path/to/your/project docker compose run ralph-login
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `PROJECT_DIR` | Yes | -- | Absolute path to the project directory on the host |
+| `RALPH_TOOL` | No | `claude` | Coding tool to use: `claude` or `codex` |
 | `CLAUDE_CONFIG_DIR` | No | `~/.claude` | Path to Claude Code configuration directory |
+| `CODEX_CONFIG_DIR` | No | `~/.codex` | Path to OpenAI Codex configuration directory |
 
 ### Build Arguments
 
@@ -151,6 +168,7 @@ args:
 - **Python 3.12** (slim base)
 - **Node.js 20** (for Claude Code CLI)
 - **Claude Code CLI** (`@anthropic-ai/claude-code`)
+- **OpenAI Codex CLI** (`@openai/codex`)
 - **Python tooling**: uv, hatch, ruff, pytest, mypy
 
 ### Security
@@ -164,7 +182,7 @@ The container runs with a non-root `ralph` user and applies the following securi
 
 ### Tool enforcement
 
-The entrypoint wrapper strips any user-provided `--tool` flags and forces `--tool claude`, ensuring the sandbox always uses Claude Code regardless of what arguments are passed.
+The entrypoint wrapper strips any user-provided `--tool` flags and injects `--tool $RALPH_TOOL`, ensuring the sandbox uses the configured tool (defaulting to `claude`). Set `RALPH_TOOL=codex` to use OpenAI Codex instead. The wrapper script's `--tool` flag sets this automatically.
 
 ### State files
 
