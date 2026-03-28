@@ -79,23 +79,7 @@ To pass Ralph arguments through:
 ralph-sandbox -- 10
 ```
 
-To create or reuse a worktree and launch Ralph into it:
-
-```bash
-cd /path/to/your/project
-ralph-sandbox \
-  --worktree /path/to/your/worktree \
-  --branch phase1-otel
-```
-
-If you are not running the wrapper from inside the main repository (or an existing worktree for it), pass `--repo` explicitly:
-
-```bash
-ralph-sandbox \
-  --repo /path/to/your/project \
-  --worktree /path/to/your/worktree  \
-  --branch phase1-otel
-```
+If you run the wrapper from inside a pre-existing git worktree, the sandbox automatically detects and mounts the shared git metadata so that `git status`, commits, and branch operations work inside the container. No extra flags needed.
 
 You can still call Compose directly if you want:
 
