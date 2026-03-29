@@ -13,6 +13,7 @@ Usage:
 Options:
   --project-dir PATH        Use an existing project directory. Defaults to the current git root or cwd.
   --tool NAME               Tool to use: claude or codex. Defaults to $RALPH_TOOL or claude.
+  --session-runner PATH     Custom runner script to replace the built-in Ralph loop.
   --claude-config-dir PATH  Claude config directory. Defaults to $CLAUDE_CONFIG_DIR or $HOME/.claude.
   --codex-config-dir PATH   Codex config directory. Defaults to $CODEX_CONFIG_DIR or $HOME/.codex.
   --service NAME            Compose service to run. Defaults to ralph.
@@ -22,6 +23,7 @@ Options:
 Examples:
   bin/ralph-sandbox
   bin/ralph-sandbox --tool codex
+  bin/ralph-sandbox --session-runner ./my-runner.sh --project-dir /path/to/project
   bin/ralph-sandbox -- 10
 EOF
 }
@@ -58,6 +60,7 @@ project_dir="${PROJECT_DIR:-}"
 ralph_tool="${RALPH_TOOL:-claude}"
 claude_config_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 codex_config_dir="${CODEX_CONFIG_DIR:-${HOME}/.codex}"
+session_runner=""
 service="ralph"
 build_flag=0
 declare -a ralph_args=()
@@ -70,6 +73,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --tool)
       ralph_tool="$2"
+      shift 2
+      ;;
+    --session-runner)
+      session_runner="$2"
       shift 2
       ;;
     --claude-config-dir)
@@ -112,19 +119,32 @@ if [[ -z "${project_dir}" ]]; then
 fi
 
 project_dir="$(abs_existing_dir "${project_dir}")"
-case "${ralph_tool}" in
-  claude)
-    claude_config_dir="$(abs_existing_dir "${claude_config_dir}")"
-    ;;
-  codex)
-    mkdir -p "${codex_config_dir}"
-    codex_config_dir="$(abs_existing_dir "${codex_config_dir}")"
-    ;;
-  *)
-    echo "ERROR: Unsupported tool: ${ralph_tool}. Use 'claude' or 'codex'." >&2
+
+# Resolve session runner to an absolute path (if provided).
+if [[ -n "${session_runner}" ]]; then
+  if [[ ! -f "${session_runner}" ]]; then
+    echo "ERROR: --session-runner path does not exist: ${session_runner}" >&2
     exit 2
-    ;;
-esac
+  fi
+  session_runner="$(cd "$(dirname "${session_runner}")" && pwd -P)/$(basename "${session_runner}")"
+fi
+
+# Tool config validation is only needed when using the default runner.
+if [[ -z "${session_runner}" ]]; then
+  case "${ralph_tool}" in
+    claude)
+      claude_config_dir="$(abs_existing_dir "${claude_config_dir}")"
+      ;;
+    codex)
+      mkdir -p "${codex_config_dir}"
+      codex_config_dir="$(abs_existing_dir "${codex_config_dir}")"
+      ;;
+    *)
+      echo "ERROR: Unsupported tool: ${ralph_tool}. Use 'claude' or 'codex'." >&2
+      exit 2
+      ;;
+  esac
+fi
 
 common_dir="$(git_common_dir "${project_dir}")"
 needs_common_mount=0
@@ -146,9 +166,9 @@ services:
   ${service}:
 EOF
 
-# Collect extra volume mounts (tool config, git common dir).
+# Collect extra volume mounts (tool config, git common dir, session runner).
 has_extra_volumes=0
-if [[ ${needs_common_mount} -eq 1 ]] || [[ "${ralph_tool}" == "claude" ]] || [[ "${ralph_tool}" == "codex" ]]; then
+if [[ ${needs_common_mount} -eq 1 ]] || [[ "${ralph_tool}" == "claude" ]] || [[ "${ralph_tool}" == "codex" ]] || [[ -n "${session_runner}" ]]; then
   has_extra_volumes=1
   echo "    volumes:" >> "${tmp_override}"
 fi
@@ -177,6 +197,15 @@ if [[ "${ralph_tool}" == "codex" ]]; then
 EOF
 fi
 
+if [[ -n "${session_runner}" ]]; then
+  cat >> "${tmp_override}" <<EOF
+      - type: bind
+        source: ${session_runner}
+        target: /run/ralph/session-runner.sh
+        read_only: true
+EOF
+fi
+
 declare -a compose_cmd=(
   docker compose
   --project-directory "${SANDBOX_ROOT}"
@@ -192,9 +221,15 @@ fi
 
 compose_cmd+=("${service}")
 
+session_runner_env=""
+if [[ -n "${session_runner}" ]]; then
+  session_runner_env="/run/ralph/session-runner.sh"
+fi
+
 env \
   PROJECT_DIR="${project_dir}" \
   RALPH_TOOL="${ralph_tool}" \
+  SESSION_RUNNER="${session_runner_env}" \
   CLAUDE_CONFIG_DIR="${claude_config_dir}" \
   CODEX_CONFIG_DIR="${codex_config_dir}" \
   "${compose_cmd[@]}" \

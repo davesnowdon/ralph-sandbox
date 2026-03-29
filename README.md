@@ -10,9 +10,10 @@ This sandbox wraps Ralph in a hardened Docker container with modern Python tooli
 
 ```
 ralph-sandbox (Docker container)
-  └─ ralph.sh (orchestration loop from upstream Ralph)
-       └─ Claude Code CLI or OpenAI Codex CLI (selected via RALPH_TOOL)
-            └─ Claude / OpenAI (LLM)
+  ├─ [default] ralph.sh (orchestration loop from upstream Ralph)
+  │    └─ Claude Code CLI or OpenAI Codex CLI (selected via RALPH_TOOL)
+  │         └─ Claude / OpenAI (LLM)
+  └─ [custom] SESSION_RUNNER script (full control, replaces ralph.sh)
 ```
 
 Each iteration of the loop:
@@ -128,6 +129,7 @@ PROJECT_DIR=/absolute/path/to/your/project docker compose run ralph-login
 |---|---|---|---|
 | `PROJECT_DIR` | Yes | -- | Absolute path to the project directory on the host |
 | `RALPH_TOOL` | No | `claude` | Coding tool to use: `claude` or `codex` |
+| `SESSION_RUNNER` | No | -- | Absolute path to a custom runner script inside the container (replaces the built-in Ralph loop) |
 | `CLAUDE_CONFIG_DIR` | No | `~/.claude` | Path to Claude Code configuration directory |
 | `CODEX_CONFIG_DIR` | No | `~/.codex` | Path to OpenAI Codex configuration directory |
 
@@ -146,6 +148,84 @@ To pin Ralph to a specific version:
 # docker-compose.yml
 args:
   RALPH_REF: "a1b2c3d"  # commit SHA
+```
+
+## Custom Session Runner
+
+By default, the container runs the built-in Ralph loop (`ralph.sh`). External orchestrators can replace this with a custom runner script by setting the `SESSION_RUNNER` environment variable. This allows ralph-sandbox to serve as a general-purpose agentic coding sandbox with all tools pre-installed.
+
+### Interface contract
+
+The stable container path for a custom runner is `/run/ralph/session-runner.sh`. The CLI wrapper mounts the host script there automatically.
+
+When `SESSION_RUNNER` is set, the entrypoint:
+
+1. Validates `PROJECT_DIR` (exists, is a git repo, git is functional)
+2. Adds `PROJECT_DIR` to git's `safe.directory`
+3. Validates the runner script exists and is executable
+4. Execs the runner with all remaining command-line arguments
+
+The custom runner **can assume**:
+
+- Working directory is `PROJECT_DIR`
+- Git is configured and functional
+- All CLI tools are available: `claude`, `codex`, `node`, `python`, `uv`, `hatch`, `ruff`, `pytest`, `mypy`, `git`, `jq`
+- All environment variables (`PROJECT_DIR`, `RALPH_TOOL`, config dirs) are available but `RALPH_TOOL` and tool config dirs are **not validated** -- the custom runner decides what it needs
+
+The custom runner **receives**:
+
+- Raw command-line arguments (no `--tool` stripping)
+- Full control over execution -- the built-in Ralph loop is not involved
+
+### Mandatory mounts in custom-runner mode
+
+| Mount | Target | Description |
+|---|---|---|
+| Project directory | `PROJECT_DIR` (same path as host) | The git repo to work in |
+| Runner script | `/run/ralph/session-runner.sh` | The custom runner to execute |
+
+Tool config mounts (`/claude_config`, `/codex_config`) are **optional** -- only needed if your runner invokes Claude Code or Codex.
+
+### Usage via the CLI wrapper
+
+```bash
+bin/ralph-sandbox --session-runner ./my-runner.sh --project-dir /path/to/project -- arg1 arg2
+```
+
+The wrapper resolves the script path, mounts it read-only into the container at `/run/ralph/session-runner.sh`, and sets `SESSION_RUNNER` automatically.
+
+### Usage via docker compose
+
+```bash
+PROJECT_DIR=/absolute/path/to/project \
+SESSION_RUNNER=/run/ralph/session-runner.sh \
+docker compose run --rm \
+  -v /path/to/runner.sh:/run/ralph/session-runner.sh:ro \
+  ralph arg1 arg2
+```
+
+### Example: external orchestrator integration
+
+An external orchestrator (e.g. "ralph++") might:
+
+```bash
+# 1. Create a worktree and prepare config
+git worktree add /tmp/feature-branch feature-branch
+
+# 2. Generate a session runner script
+cat > /tmp/session-runner.sh <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+# Custom workflow: apply config, run claude with specific instructions, etc.
+cd "${PROJECT_DIR}"
+claude --print "Implement the feature described in TASK.md"
+SCRIPT
+chmod +x /tmp/session-runner.sh
+
+# 3. Run the sandbox with the custom runner
+bin/ralph-sandbox \
+  --session-runner /tmp/session-runner.sh \
+  --project-dir /tmp/feature-branch
 ```
 
 ## CI/CD
