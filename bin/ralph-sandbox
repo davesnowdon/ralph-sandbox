@@ -201,7 +201,7 @@ if [[ -n "${session_runner}" ]]; then
   cat >> "${tmp_override}" <<EOF
       - type: bind
         source: ${session_runner}
-        target: ${session_runner}
+        target: /run/ralph/session-runner.sh
         read_only: true
 EOF
 fi
@@ -221,10 +221,15 @@ fi
 
 compose_cmd+=("${service}")
 
+session_runner_env=""
+if [[ -n "${session_runner}" ]]; then
+  session_runner_env="/run/ralph/session-runner.sh"
+fi
+
 env \
   PROJECT_DIR="${project_dir}" \
   RALPH_TOOL="${ralph_tool}" \
-  SESSION_RUNNER="${session_runner}" \
+  SESSION_RUNNER="${session_runner_env}" \
   CLAUDE_CONFIG_DIR="${claude_config_dir}" \
   CODEX_CONFIG_DIR="${codex_config_dir}" \
   "${compose_cmd[@]}" \

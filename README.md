@@ -156,6 +156,8 @@ By default, the container runs the built-in Ralph loop (`ralph.sh`). External or
 
 ### Interface contract
 
+The stable container path for a custom runner is `/run/ralph/session-runner.sh`. The CLI wrapper mounts the host script there automatically.
+
 When `SESSION_RUNNER` is set, the entrypoint:
 
 1. Validates `PROJECT_DIR` (exists, is a git repo, git is functional)
@@ -175,20 +177,30 @@ The custom runner **receives**:
 - Raw command-line arguments (no `--tool` stripping)
 - Full control over execution -- the built-in Ralph loop is not involved
 
+### Mandatory mounts in custom-runner mode
+
+| Mount | Target | Description |
+|---|---|---|
+| Project directory | `PROJECT_DIR` (same path as host) | The git repo to work in |
+| Runner script | `/run/ralph/session-runner.sh` | The custom runner to execute |
+
+Tool config mounts (`/claude_config`, `/codex_config`) are **optional** -- only needed if your runner invokes Claude Code or Codex.
+
 ### Usage via the CLI wrapper
 
 ```bash
 bin/ralph-sandbox --session-runner ./my-runner.sh --project-dir /path/to/project -- arg1 arg2
 ```
 
-The wrapper resolves the script path, mounts it read-only into the container at the same absolute path, and sets `SESSION_RUNNER` automatically.
+The wrapper resolves the script path, mounts it read-only into the container at `/run/ralph/session-runner.sh`, and sets `SESSION_RUNNER` automatically.
 
 ### Usage via docker compose
 
 ```bash
+PROJECT_DIR=/absolute/path/to/project \
+SESSION_RUNNER=/run/ralph/session-runner.sh \
 docker compose run --rm \
-  -v /path/to/runner.sh:/path/to/runner.sh:ro \
-  -e SESSION_RUNNER=/path/to/runner.sh \
+  -v /path/to/runner.sh:/run/ralph/session-runner.sh:ro \
   ralph arg1 arg2
 ```
 
