@@ -95,7 +95,7 @@ while [[ $# -gt 0 ]]; do
       build_flag=1
       shift
       ;;
-    -h|--help)
+    -h | --help)
       usage
       exit 0
       ;;
@@ -161,20 +161,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cat > "${tmp_override}" <<EOF
+cat >"${tmp_override}" <<EOF
 services:
   ${service}:
 EOF
 
 # Collect extra volume mounts (tool config, git common dir, session runner).
-has_extra_volumes=0
 if [[ ${needs_common_mount} -eq 1 ]] || [[ "${ralph_tool}" == "claude" ]] || [[ "${ralph_tool}" == "codex" ]] || [[ -n "${session_runner}" ]]; then
-  has_extra_volumes=1
-  echo "    volumes:" >> "${tmp_override}"
+  echo "    volumes:" >>"${tmp_override}"
 fi
 
 if [[ "${ralph_tool}" == "claude" ]]; then
-  cat >> "${tmp_override}" <<EOF
+  cat >>"${tmp_override}" <<EOF
       - type: bind
         source: ${claude_config_dir}
         target: /claude_config
@@ -182,7 +180,7 @@ EOF
 fi
 
 if [[ ${needs_common_mount} -eq 1 ]]; then
-  cat >> "${tmp_override}" <<EOF
+  cat >>"${tmp_override}" <<EOF
       - type: bind
         source: ${common_dir}
         target: ${common_dir}
@@ -190,7 +188,7 @@ EOF
 fi
 
 if [[ "${ralph_tool}" == "codex" ]]; then
-  cat >> "${tmp_override}" <<EOF
+  cat >>"${tmp_override}" <<EOF
       - type: bind
         source: ${codex_config_dir}
         target: /codex_config
@@ -198,7 +196,7 @@ EOF
 fi
 
 if [[ -n "${session_runner}" ]]; then
-  cat >> "${tmp_override}" <<EOF
+  cat >>"${tmp_override}" <<EOF
       - type: bind
         source: ${session_runner}
         target: /run/ralph/session-runner.sh
