@@ -90,6 +90,10 @@ if [[ ! -d "${PROJECT_DIR}" ]]; then
   exit 2
 fi
 
+# Mark PROJECT_DIR as safe before any git operations so that git does not
+# reject directories owned by a different uid (common with bind mounts).
+git config --global --add safe.directory "${PROJECT_DIR}"
+
 if ! git -C "${PROJECT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "ERROR: PROJECT_DIR='${PROJECT_DIR}' is not inside a valid Git working tree in the container." >&2
   echo "Check your bind mounts. Linked git worktrees need the shared git metadata mounted too." >&2
@@ -112,8 +116,6 @@ if ! git -C "${PROJECT_DIR}" status --short >/dev/null 2>&1; then
   echo "Resolved git common dir: ${common_dir}" >&2
   exit 2
 fi
-
-git config --global --add safe.directory "${PROJECT_DIR}"
 
 # ---- Phase B: Custom session runner (if provided) ----
 
