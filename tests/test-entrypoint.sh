@@ -52,7 +52,7 @@ echo "==> Test 1: SESSION_RUNNER runs a custom script"
 REPO="$(make_temp_repo)"
 RUNNER="$(mktemp)"
 CLEANUP_DIRS+=("${RUNNER}")
-cat > "${RUNNER}" <<'SCRIPT'
+cat >"${RUNNER}" <<'SCRIPT'
 #!/usr/bin/env bash
 echo "CUSTOM_RUNNER_OK"
 echo "PROJECT_DIR=${PROJECT_DIR}"
@@ -107,7 +107,7 @@ echo "==> Test 3: SESSION_RUNNER error when script is not executable"
 REPO="$(make_temp_repo)"
 RUNNER_NX="$(mktemp)"
 CLEANUP_DIRS+=("${RUNNER_NX}")
-echo '#!/bin/bash' > "${RUNNER_NX}"
+echo '#!/bin/bash' >"${RUNNER_NX}"
 chmod -x "${RUNNER_NX}"
 
 OUTPUT="$(docker run --rm \
