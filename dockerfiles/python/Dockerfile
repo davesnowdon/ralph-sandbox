@@ -73,7 +73,8 @@ RUN git clone https://github.com/snarktank/ralph.git /opt/ralph \
 RUN git config --system user.email "ralph@local" \
     && git config --system user.name "Ralph" \
     && git config --system core.autocrlf false \
-    && git config --system pull.rebase false
+    && git config --system pull.rebase false \
+    && git config --system --add safe.directory '*'
 
 # ---- Entrypoint wrapper (configurable tool via RALPH_TOOL, supports PROJECT_DIR + config dirs + SESSION_RUNNER) ----
 RUN cat > /usr/local/bin/ralph-entrypoint <<'EOF' \
@@ -89,10 +90,6 @@ if [[ ! -d "${PROJECT_DIR}" ]]; then
   echo "ERROR: PROJECT_DIR='${PROJECT_DIR}' does not exist in container." >&2
   exit 2
 fi
-
-# Mark PROJECT_DIR as safe before any git operations so that git does not
-# reject directories owned by a different uid (common with bind mounts).
-git config --global --add safe.directory "${PROJECT_DIR}"
 
 if ! git -C "${PROJECT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "ERROR: PROJECT_DIR='${PROJECT_DIR}' is not inside a valid Git working tree in the container." >&2
