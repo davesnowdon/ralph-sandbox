@@ -41,6 +41,9 @@ make_temp_repo() {
   git -C "${tmp}" config user.email "test@test"
   git -C "${tmp}" config user.name "Test"
   git -C "${tmp}" commit --allow-empty -m "init" -q
+  # Make the repo world-readable so the container's ralph user (UID 1000)
+  # can access it when bind-mounted, even if the host UID differs.
+  chmod -R a+rX "${tmp}"
   echo "${tmp}"
 }
 
