@@ -58,18 +58,44 @@ When changing container startup, mounts, env vars, runner dispatch, or docs for 
 
 If behavior changes, update `README.md` and `tests/test-entrypoint.sh` in the same change.
 
-## Verification
+## Tooling Baseline
 
-After making relevant changes, agents must run:
+This repo uses shell- and Docker-focused validation rather than a Python
+package workflow.
+
+Primary commands:
 
 ```bash
-tests/test-entrypoint.sh
+make lint
+make fmt-check
+make test
+make check
+```
+
+`make check` currently runs:
+
+- `shellcheck` on `bin/ralph-sandbox` and `tests/test-entrypoint.sh`
+- `shfmt -d` formatting verification for those shell files
+- Docker image build validation
+- `tests/test-entrypoint.sh`
+
+## Verification
+
+Before a change can be considered done, run:
+
+```bash
+make check
 ```
 
 At minimum, this is required for changes touching any of:
 
 - `dockerfiles/python/Dockerfile`
 - `docker-compose.yml`
+- `docker-compose.claude.yml`
+- `docker-compose.codex.yml`
 - `bin/ralph-sandbox`
 - `tests/test-entrypoint.sh`
 - `README.md` sections describing runtime behavior
+
+If the change alters the contract consumed by `ralph-plus-plus`, also run the
+relevant `ralph-plus-plus` checks and a manual cross-repo integration pass.

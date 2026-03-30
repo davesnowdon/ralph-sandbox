@@ -26,6 +26,7 @@ services:
       - PROJECT_DIR=${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
       - RALPH_TOOL=${RALPH_TOOL:-claude}
       - SESSION_RUNNER=${SESSION_RUNNER:-}
+      - RALPH_PROMPT_FILE=${RALPH_PROMPT_FILE:-}
       - CLAUDE_CONFIG_DIR=/claude_config
       - CODEX_HOME=/codex_config
       - PYTHONDONTWRITEBYTECODE=1
@@ -51,5 +52,6 @@ services:
       - PROJECT_DIR=${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
       - RALPH_TOOL=${RALPH_TOOL:-claude}
       - SESSION_RUNNER=${SESSION_RUNNER:-}
+      - RALPH_PROMPT_FILE=${RALPH_PROMPT_FILE:-}
       - CLAUDE_CONFIG_DIR=/claude_config
       - CODEX_HOME=/codex_config

@@ -130,6 +130,7 @@ PROJECT_DIR=/absolute/path/to/your/project docker compose run ralph-login
 | `PROJECT_DIR` | Yes | -- | Absolute path to the project directory on the host |
 | `RALPH_TOOL` | No | `claude` | Coding tool to use: `claude` or `codex` |
 | `SESSION_RUNNER` | No | -- | Absolute path to a custom runner script inside the container (replaces the built-in Ralph loop) |
+| `RALPH_PROMPT_FILE` | No | -- | Path to a custom prompt file (relative to `PROJECT_DIR`). Used by orchestrated mode to pass per-iteration or fixer prompts to the session runner. Falls back to `scripts/ralph/CLAUDE.md` when unset. |
 | `CLAUDE_CONFIG_DIR` | No | `~/.claude` | Path to Claude Code configuration directory |
 | `CODEX_CONFIG_DIR` | No | `~/.codex` | Path to OpenAI Codex configuration directory |
 
