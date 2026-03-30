@@ -61,7 +61,7 @@ echo "CUSTOM_RUNNER_OK"
 echo "PROJECT_DIR=${PROJECT_DIR}"
 echo "ARGS=$*"
 SCRIPT
-chmod +x "${RUNNER}"
+chmod a+rx "${RUNNER}"
 
 OUTPUT="$(docker run --rm \
   -v "${REPO}:${REPO}" \
