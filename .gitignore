@@ -12,3 +12,4 @@ venv/
 .venv/
 *.egg
 .claude
+.codex
