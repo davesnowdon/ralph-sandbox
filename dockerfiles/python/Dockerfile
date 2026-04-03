@@ -81,6 +81,7 @@ RUN cat > /usr/local/bin/ralph-entrypoint <<'EOF' \
  && chmod +x /usr/local/bin/ralph-entrypoint
 #!/usr/bin/env bash
 set -euo pipefail
+ulimit -c 0
 
 PROJECT_DIR="${PROJECT_DIR:-/workspace}"
 
@@ -145,6 +146,16 @@ case "${RALPH_TOOL}" in
     if [[ ! -d "${CLAUDE_CFG}" ]]; then
       echo "ERROR: CLAUDE_CONFIG_DIR='${CLAUDE_CFG}' does not exist in container." >&2
       exit 2
+    fi
+    # Restore .claude.json from backup if missing (e.g. after interrupted config write)
+    if [[ ! -f "${CLAUDE_CFG}/.claude.json" ]]; then
+      latest_backup="$(ls -t "${CLAUDE_CFG}/backups/".claude.json.backup.* 2>/dev/null | head -1)"
+      if [[ -n "${latest_backup}" ]]; then
+        echo "WARNING: ${CLAUDE_CFG}/.claude.json missing — restoring from backup: ${latest_backup}" >&2
+        cp "${latest_backup}" "${CLAUDE_CFG}/.claude.json"
+      else
+        echo "WARNING: ${CLAUDE_CFG}/.claude.json not found and no backups available." >&2
+      fi
     fi
     ;;
   codex)

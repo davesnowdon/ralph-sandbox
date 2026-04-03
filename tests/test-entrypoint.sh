@@ -160,6 +160,38 @@ else
 fi
 
 echo
+echo "==> Test 6: .claude.json restored from backup when missing"
+REPO="$(make_temp_repo)"
+CLAUDE_CFG_DIR="$(mktemp -d)"
+CLEANUP_DIRS+=("${CLAUDE_CFG_DIR}")
+mkdir -p "${CLAUDE_CFG_DIR}/backups"
+echo '{"restored":true}' >"${CLAUDE_CFG_DIR}/backups/.claude.json.backup.123"
+chmod -R a+rwX "${CLAUDE_CFG_DIR}"
+
+# Let the default path run; it will restore .claude.json then attempt ralph.sh
+# (which will fail, but the restore happens before that).
+OUTPUT="$(docker run --rm \
+  -v "${REPO}:${REPO}" \
+  -v "${CLAUDE_CFG_DIR}:${CLAUDE_CFG_DIR}" \
+  -e "PROJECT_DIR=${REPO}" \
+  -e "RALPH_TOOL=claude" \
+  -e "CLAUDE_CONFIG_DIR=${CLAUDE_CFG_DIR}" \
+  --entrypoint ralph-entrypoint \
+  "${IMAGE}" 2>&1)" || true
+
+if echo "${OUTPUT}" | grep -q "restoring from backup"; then
+  log_pass "Backup restoration warning emitted"
+else
+  log_fail "Expected backup restoration warning. Output: ${OUTPUT}"
+fi
+
+if [[ -f "${CLAUDE_CFG_DIR}/.claude.json" ]]; then
+  log_pass ".claude.json restored from backup"
+else
+  log_fail ".claude.json was not restored"
+fi
+
+echo
 echo "========================================"
 echo "Results: ${PASS} passed, ${FAIL} failed"
 echo "========================================"
