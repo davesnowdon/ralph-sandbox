@@ -12,7 +12,6 @@ services:
         RALPH_GID: "${GID:-1000}"
 
     image: ralph-sandbox:latest
-    container_name: ralph-sandbox
 
     init: true
     working_dir: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
