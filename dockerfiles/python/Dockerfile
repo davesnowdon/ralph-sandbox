@@ -39,11 +39,13 @@ RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
     && node --version && npm --version
 
 # ---- Claude Code CLI ----
-RUN npm install -g @anthropic-ai/claude-code \
+ARG CLAUDE_CODE_VERSION=2.1.92
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
     && claude --version
 
 # ---- OpenAI Codex CLI ----
-RUN npm install -g @openai/codex \
+ARG CODEX_VERSION=0.118.0
+RUN npm install -g @openai/codex@${CODEX_VERSION} \
     && codex --version
 
 # ---- Modern Python tooling (uv + hatch/ruff/pytest/mypy) ----
