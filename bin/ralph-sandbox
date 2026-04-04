@@ -156,9 +156,7 @@ if [[ -n "${common_dir}" && "${common_dir}" != "${project_dir}/.git" ]]; then
   needs_common_mount=1
 fi
 
-tmp_dir="${SANDBOX_ROOT}/.tmp"
-mkdir -p -- "${tmp_dir}"
-tmp_override="$(mktemp "${tmp_dir}/compose.override.XXXXXX.yml")"
+tmp_override="$(mktemp "${TMPDIR:-/tmp}/ralph-sandbox.compose.override.XXXXXX.yml")"
 cleanup() {
   rm -f -- "${tmp_override}"
 }

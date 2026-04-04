@@ -9,7 +9,7 @@ services:
         # RALPH_REF: "a1b2c3d4..."
         RALPH_REF: "6c53cb0"
         RALPH_UID: "${UID:-1000}"
-        RALPH_GID: "${GID:-1000}"
+        RALPH_GID: "${RALPH_GID:-1000}"
 
     image: ralph-sandbox:latest
 
@@ -27,7 +27,7 @@ services:
       - SESSION_RUNNER=${SESSION_RUNNER:-}
       - RALPH_PROMPT_FILE=${RALPH_PROMPT_FILE:-}
       - CLAUDE_CONFIG_DIR=/claude_config
-      - CODEX_HOME=/codex_config
+      - CODEX_CONFIG_DIR=/codex_config
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
 
@@ -53,4 +53,4 @@ services:
       - SESSION_RUNNER=${SESSION_RUNNER:-}
       - RALPH_PROMPT_FILE=${RALPH_PROMPT_FILE:-}
       - CLAUDE_CONFIG_DIR=/claude_config
-      - CODEX_HOME=/codex_config
+      - CODEX_CONFIG_DIR=/codex_config

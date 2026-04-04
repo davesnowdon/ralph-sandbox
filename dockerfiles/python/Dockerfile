@@ -66,7 +66,7 @@ RUN groupadd --gid ${RALPH_GID} ralph \
     && useradd --uid ${RALPH_UID} --gid ${RALPH_GID} --shell /bin/bash --create-home ralph
 
 # ---- Upstream Ralph (no local copy) ----
-RUN git clone https://github.com/snarktank/ralph.git /opt/ralph \
+RUN git clone --depth 1 --no-single-branch https://github.com/snarktank/ralph.git /opt/ralph \
     && cd /opt/ralph \
     && git checkout "${RALPH_REF}" \
     && chmod +x /opt/ralph/ralph.sh
@@ -130,6 +130,7 @@ if [[ -n "${SESSION_RUNNER}" ]]; then
     echo "ERROR: SESSION_RUNNER='${SESSION_RUNNER}' is not executable." >&2
     exit 2
   fi
+  cd "${PROJECT_DIR}"
   exec "${SESSION_RUNNER}" "$@"
 fi
 
@@ -161,13 +162,13 @@ case "${RALPH_TOOL}" in
     fi
     ;;
   codex)
-    CODEX_CFG="${CODEX_HOME:-}"
+    CODEX_CFG="${CODEX_CONFIG_DIR:-}"
     if [[ -z "${CODEX_CFG}" ]]; then
-      echo "ERROR: CODEX_HOME is not set (must be mounted in)." >&2
+      echo "ERROR: CODEX_CONFIG_DIR is not set (must be mounted in)." >&2
       exit 2
     fi
     if [[ ! -d "${CODEX_CFG}" ]]; then
-      echo "ERROR: CODEX_HOME='${CODEX_CFG}' does not exist in container." >&2
+      echo "ERROR: CODEX_CONFIG_DIR='${CODEX_CFG}' does not exist in container." >&2
       exit 2
     fi
     ;;
@@ -183,7 +184,8 @@ RALPH_HOME="${PROJECT_DIR}/scripts/ralph"
 mkdir -p "${RALPH_HOME}"
 
 cp -f /opt/ralph/ralph.sh "${RALPH_HOME}/ralph.sh"
-cp -f /opt/ralph/CLAUDE.md "${RALPH_HOME}/CLAUDE.md"
+# Only copy CLAUDE.md if it doesn't already exist — users may customise it.
+cp -n /opt/ralph/CLAUDE.md "${RALPH_HOME}/CLAUDE.md" 2>/dev/null || true
 chmod +x "${RALPH_HOME}/ralph.sh"
 
 # Strip any user-provided --tool flags and inject --tool $RALPH_TOOL.
