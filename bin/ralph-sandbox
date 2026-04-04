@@ -225,16 +225,14 @@ if [[ -n "${session_runner}" ]]; then
 fi
 
 declare -a config_env=()
-if [[ -z "${session_runner_env}" ]]; then
-  case "${ralph_tool}" in
-    claude)
-      config_env+=(CLAUDE_CONFIG_DIR="${claude_config_dir}")
-      ;;
-    codex)
-      config_env+=(CODEX_CONFIG_DIR="${codex_config_dir}")
-      ;;
-  esac
-fi
+case "${ralph_tool}" in
+  claude)
+    config_env+=(CLAUDE_CONFIG_DIR="${claude_config_dir}")
+    ;;
+  codex)
+    config_env+=(CODEX_CONFIG_DIR="${codex_config_dir}")
+    ;;
+esac
 
 env \
   PROJECT_DIR="${project_dir}" \
