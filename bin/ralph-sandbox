@@ -37,6 +37,15 @@ abs_existing_dir() {
   cd -- "${path}" && pwd -P
 }
 
+yaml_dquote() {
+  # Escape a string for use inside YAML double quotes.
+  # Backslash and double-quote are the only characters that need escaping.
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  printf '"%s"' "$s"
+}
+
 git_repo_root() {
   local path="$1"
   git -C "${path}" rev-parse --show-toplevel 2>/dev/null || true
@@ -175,7 +184,7 @@ fi
 if [[ "${ralph_tool}" == "claude" ]]; then
   cat >>"${tmp_override}" <<EOF
       - type: bind
-        source: '${claude_config_dir}'
+        source: $(yaml_dquote "${claude_config_dir}")
         target: /claude_config
 EOF
 fi
@@ -183,15 +192,15 @@ fi
 if [[ ${needs_common_mount} -eq 1 ]]; then
   cat >>"${tmp_override}" <<EOF
       - type: bind
-        source: '${common_dir}'
-        target: '${common_dir}'
+        source: $(yaml_dquote "${common_dir}")
+        target: $(yaml_dquote "${common_dir}")
 EOF
 fi
 
 if [[ "${ralph_tool}" == "codex" ]]; then
   cat >>"${tmp_override}" <<EOF
       - type: bind
-        source: '${codex_config_dir}'
+        source: $(yaml_dquote "${codex_config_dir}")
         target: /codex_config
 EOF
 fi
@@ -199,7 +208,7 @@ fi
 if [[ -n "${session_runner}" ]]; then
   cat >>"${tmp_override}" <<EOF
       - type: bind
-        source: '${session_runner}'
+        source: $(yaml_dquote "${session_runner}")
         target: /run/ralph/session-runner.sh
         read_only: true
 EOF
