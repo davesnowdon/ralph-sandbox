@@ -224,11 +224,22 @@ if [[ -n "${session_runner}" ]]; then
   session_runner_env="/run/ralph/session-runner.sh"
 fi
 
+declare -a config_env=()
+if [[ -z "${session_runner_env}" ]]; then
+  case "${ralph_tool}" in
+    claude)
+      config_env+=(CLAUDE_CONFIG_DIR="${claude_config_dir}")
+      ;;
+    codex)
+      config_env+=(CODEX_CONFIG_DIR="${codex_config_dir}")
+      ;;
+  esac
+fi
+
 env \
   PROJECT_DIR="${project_dir}" \
   RALPH_TOOL="${ralph_tool}" \
   SESSION_RUNNER="${session_runner_env}" \
-  CLAUDE_CONFIG_DIR="${claude_config_dir}" \
-  CODEX_CONFIG_DIR="${codex_config_dir}" \
+  "${config_env[@]}" \
   "${compose_cmd[@]}" \
   "${ralph_args[@]}"
