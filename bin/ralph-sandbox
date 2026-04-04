@@ -174,7 +174,7 @@ fi
 if [[ "${ralph_tool}" == "claude" ]]; then
   cat >>"${tmp_override}" <<EOF
       - type: bind
-        source: ${claude_config_dir}
+        source: '${claude_config_dir}'
         target: /claude_config
 EOF
 fi
@@ -182,15 +182,15 @@ fi
 if [[ ${needs_common_mount} -eq 1 ]]; then
   cat >>"${tmp_override}" <<EOF
       - type: bind
-        source: ${common_dir}
-        target: ${common_dir}
+        source: '${common_dir}'
+        target: '${common_dir}'
 EOF
 fi
 
 if [[ "${ralph_tool}" == "codex" ]]; then
   cat >>"${tmp_override}" <<EOF
       - type: bind
-        source: ${codex_config_dir}
+        source: '${codex_config_dir}'
         target: /codex_config
 EOF
 fi
@@ -198,7 +198,7 @@ fi
 if [[ -n "${session_runner}" ]]; then
   cat >>"${tmp_override}" <<EOF
       - type: bind
-        source: ${session_runner}
+        source: '${session_runner}'
         target: /run/ralph/session-runner.sh
         read_only: true
 EOF
