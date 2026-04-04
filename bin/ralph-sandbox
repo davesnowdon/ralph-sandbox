@@ -136,7 +136,10 @@ if [[ -z "${session_runner}" ]]; then
       claude_config_dir="$(abs_existing_dir "${claude_config_dir}")"
       ;;
     codex)
-      mkdir -p "${codex_config_dir}"
+      if ! mkdir -p "${codex_config_dir}"; then
+        echo "ERROR: Failed to create codex config directory: ${codex_config_dir}" >&2
+        exit 2
+      fi
       codex_config_dir="$(abs_existing_dir "${codex_config_dir}")"
       ;;
     *)
