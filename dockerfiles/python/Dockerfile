@@ -39,12 +39,12 @@ RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
     && node --version && npm --version
 
 # ---- Claude Code CLI ----
-ARG CLAUDE_CODE_VERSION=2.1.92
+ARG CLAUDE_CODE_VERSION=2.1.177
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
     && claude --version
 
 # ---- OpenAI Codex CLI ----
-ARG CODEX_VERSION=0.118.0
+ARG CODEX_VERSION=0.139.0
 RUN npm install -g @openai/codex@${CODEX_VERSION} \
     && codex --version
 
