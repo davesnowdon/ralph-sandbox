@@ -4,7 +4,7 @@ ARG PYTHON_IMAGE=python:3.12.11-slim-bookworm
 FROM ${PYTHON_IMAGE}
 
 LABEL org.opencontainers.image.title="ralph-sandbox"
-LABEL org.opencontainers.image.description="Ralph agentic loop sandbox with Claude Code + OpenAI Codex CLI support and modern Python tooling (uv/hatch/ruff/pytest/mypy)"
+LABEL org.opencontainers.image.description="Ralph agentic loop sandbox with Claude Code + OpenAI Codex CLI support and modern Python tooling (uv/hatch/ruff/pytest/mypy/pyright)"
 LABEL org.opencontainers.image.source="https://github.com/davesnowdon/ralph-sandbox"
 
 ARG NODE_MAJOR=20
@@ -19,7 +19,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     # Install uv itself to /usr/local/bin (instead of ~/.local/bin)
     UV_INSTALL_DIR=/usr/local/bin \
     # Install uv-managed tool shims to /usr/local/bin so they're on PATH for all users
-    UV_TOOL_BIN_DIR=/usr/local/bin
+    UV_TOOL_BIN_DIR=/usr/local/bin \
+    # Store uv-managed tool environments in a world-readable location. The default
+    # (~/.local/share/uv/tools under /root, mode 700) is unreadable by the non-root
+    # ralph user, which breaks the shims at runtime. /opt is traversable by all users.
+    UV_TOOL_DIR=/opt/uv/tools
 
 # ---- OS deps (keep tight) ----
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -29,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       git \
       gnupg \
       jq \
+      make \
       procps \
     && rm -rf /var/lib/apt/lists/*
 
@@ -60,6 +65,14 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ruff --version \
     && pytest --version \
     && mypy --version
+
+# ---- Pyright (Python type checker, via npm so it shares the installed Node) ----
+# Installed via npm rather than the pyright PyPI wrapper: the wrapper downloads
+# its own per-user nodeenv on first run (which would re-download for the ralph
+# user at runtime). The npm package is the real Node-based pyright on PATH for
+# all users and verifies at build time.
+RUN npm install -g pyright \
+    && pyright --version
 
 # ---- Non-root user ----
 RUN groupadd --gid ${RALPH_GID} ralph \

@@ -192,6 +192,22 @@ else
 fi
 
 echo
+echo "==> Test 7: required toolchain usable by the non-root runtime user"
+# Runs as the default (ralph) user with the default entrypoint overridden.
+# `command -v` resolves shims AND follows them, so this also catches uv tool
+# environments that live in a location the ralph user cannot read.
+TOOLS="make pyright uv ruff pytest mypy hatch"
+OUTPUT="$(docker run --rm --entrypoint bash "${IMAGE}" -c \
+  'for t in '"${TOOLS}"'; do command -v "$t" || echo "MISSING:$t"; done' 2>&1)" &&
+  RC=0 || RC=$?
+
+if [[ ${RC} -eq 0 ]] && ! echo "${OUTPUT}" | grep -q "MISSING:"; then
+  log_pass "Full toolchain present on PATH for ralph: ${TOOLS}"
+else
+  log_fail "Toolchain incomplete for ralph (rc=${RC}). Output: ${OUTPUT}"
+fi
+
+echo
 echo "========================================"
 echo "Results: ${PASS} passed, ${FAIL} failed"
 echo "========================================"
