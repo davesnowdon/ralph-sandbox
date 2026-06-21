@@ -4,7 +4,7 @@ ARG PYTHON_IMAGE=python:3.12.11-slim-bookworm
 FROM ${PYTHON_IMAGE}
 
 LABEL org.opencontainers.image.title="ralph-sandbox"
-LABEL org.opencontainers.image.description="Ralph agentic loop sandbox with Claude Code + OpenAI Codex CLI support and modern Python tooling (uv/hatch/ruff/pytest/mypy/pyright) plus SAST (bandit/pip-audit/semgrep)"
+LABEL org.opencontainers.image.description="Ralph agentic loop sandbox with Claude Code + OpenAI Codex CLI support and modern Python tooling (uv/hatch/ruff/pytest/mypy/pyright/coverage) plus SAST (bandit/pip-audit/semgrep)"
 LABEL org.opencontainers.image.source="https://github.com/davesnowdon/ralph-sandbox"
 
 ARG NODE_MAJOR=20
@@ -61,10 +61,12 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && uv tool install ruff \
     && uv tool install pytest \
     && uv tool install mypy \
+    && uv tool install coverage \
     && hatch --version \
     && ruff --version \
     && pytest --version \
-    && mypy --version
+    && mypy --version \
+    && coverage --version
 
 # ---- Pyright (Python type checker, via npm so it shares the installed Node) ----
 # Installed via npm rather than the pyright PyPI wrapper: the wrapper downloads
