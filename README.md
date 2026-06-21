@@ -170,7 +170,7 @@ The custom runner **can assume**:
 
 - Working directory is `PROJECT_DIR`
 - Git is configured and functional
-- All CLI tools are available: `claude`, `codex`, `node`, `python`, `uv`, `hatch`, `ruff`, `pytest`, `mypy`, `pyright`, `make`, `git`, `jq`
+- All CLI tools are available: `claude`, `codex`, `node`, `python`, `uv`, `hatch`, `ruff`, `pytest`, `mypy`, `pyright`, `bandit`, `pip-audit`, `semgrep`, `make`, `git`, `jq`
 - All environment variables (`PROJECT_DIR`, `RALPH_TOOL`, config dirs) are available but `RALPH_TOOL` and tool config dirs are **not validated** -- the custom runner decides what it needs
 
 The custom runner **receives**:
@@ -242,6 +242,7 @@ Pull requests build the Docker image to validate that it still compiles. Docker 
 - **Claude Code CLI** (`@anthropic-ai/claude-code`)
 - **OpenAI Codex CLI** (`@openai/codex`)
 - **Python tooling**: uv, hatch, ruff, pytest, mypy, pyright
+- **SAST / security tooling**: bandit, pip-audit, semgrep
 - **Build tool**: make (for Makefile-driven repos)
 
 ### Security
