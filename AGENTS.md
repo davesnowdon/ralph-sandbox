@@ -6,7 +6,7 @@
 
 - a default built-in runner based on upstream `ralph.sh`
 - Claude Code and OpenAI Codex CLI installed in the image
-- Python tooling installed in the image (`uv`, `hatch`, `ruff`, `pytest`, `mypy`, `pyright`)
+- Python tooling installed in the image (`uv`, `hatch`, `ruff`, `pytest`, `mypy`, `pyright`, `coverage`)
 - SAST / security tooling installed in the image (`bandit`, `pip-audit`, `semgrep`)
 - a supported custom-runner mode via `SESSION_RUNNER`
 
