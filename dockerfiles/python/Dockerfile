@@ -4,7 +4,7 @@ ARG PYTHON_IMAGE=python:3.12.11-slim-bookworm
 FROM ${PYTHON_IMAGE}
 
 LABEL org.opencontainers.image.title="ralph-sandbox"
-LABEL org.opencontainers.image.description="Ralph agentic loop sandbox with Claude Code + OpenAI Codex CLI support and modern Python tooling (uv/hatch/ruff/pytest/mypy/pyright)"
+LABEL org.opencontainers.image.description="Ralph agentic loop sandbox with Claude Code + OpenAI Codex CLI support and modern Python tooling (uv/hatch/ruff/pytest/mypy/pyright) plus SAST (bandit/pip-audit/semgrep)"
 LABEL org.opencontainers.image.source="https://github.com/davesnowdon/ralph-sandbox"
 
 ARG NODE_MAJOR=20
@@ -73,6 +73,18 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
 # all users and verifies at build time.
 RUN npm install -g pyright \
     && pyright --version
+
+# ---- Security / SAST tooling (bandit + pip-audit + semgrep) ----
+# Installed as uv-managed tools (shims on PATH in /usr/local/bin, like the block
+# above) so the lithos-loom deterministic gate can run them as gate checks.
+# bandit is self-contained; pip-audit and semgrep fetch advisory/rule data at run
+# time (the gate container has egress) and cache it under the mounted gate cache.
+RUN uv tool install bandit \
+    && uv tool install pip-audit \
+    && uv tool install semgrep \
+    && bandit --version \
+    && pip-audit --version \
+    && semgrep --version
 
 # ---- Non-root user ----
 RUN groupadd --gid ${RALPH_GID} ralph \

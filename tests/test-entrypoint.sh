@@ -196,7 +196,7 @@ echo "==> Test 7: required toolchain usable by the non-root runtime user"
 # Runs as the default (ralph) user with the default entrypoint overridden.
 # `command -v` resolves shims AND follows them, so this also catches uv tool
 # environments that live in a location the ralph user cannot read.
-TOOLS="make pyright uv ruff pytest mypy hatch"
+TOOLS="make pyright uv ruff pytest mypy hatch bandit pip-audit semgrep"
 OUTPUT="$(docker run --rm --entrypoint bash "${IMAGE}" -c \
   'for t in '"${TOOLS}"'; do command -v "$t" || echo "MISSING:$t"; done' 2>&1)" &&
   RC=0 || RC=$?
