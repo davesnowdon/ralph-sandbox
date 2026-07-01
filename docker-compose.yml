@@ -29,6 +29,7 @@ services:
       - RALPH_PROMPT_FILE=${RALPH_PROMPT_FILE:-}
       - CLAUDE_CONFIG_DIR=/claude_config
       - CODEX_CONFIG_DIR=/codex_config
+      - CROSS_TOOLCHAIN_DIR=${CROSS_TOOLCHAIN_DIR:-}
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
 
@@ -58,3 +59,4 @@ services:
       - RALPH_PROMPT_FILE=${RALPH_PROMPT_FILE:-}
       - CLAUDE_CONFIG_DIR=/claude_config
       - CODEX_CONFIG_DIR=/codex_config
+      - CROSS_TOOLCHAIN_DIR=${CROSS_TOOLCHAIN_DIR:-}

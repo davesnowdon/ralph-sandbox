@@ -4,12 +4,13 @@ A Docker-based sandbox for running the [Ralph](https://github.com/snarktank/ralp
 
 Ralph is an autonomous agent loop that iteratively implements software features by reading a structured PRD (`prd.json`), selecting the highest-priority incomplete story, implementing it, running quality checks, committing changes, and repeating until all stories pass. Each iteration spawns a fresh AI instance with clean context -- only git history, a learnings file (`progress.txt`), and task statuses carry forward between iterations.
 
-This sandbox wraps Ralph in a hardened Docker container, making it straightforward to point at any project directory and let Ralph work autonomously. Two image variants are provided:
+This sandbox wraps Ralph in a hardened Docker container, making it straightforward to point at any project directory and let Ralph work autonomously. Three image variants are provided:
 
 - **`python`** (default) — modern Python tooling (uv, hatch, ruff, pytest, mypy, pyright, coverage) plus SAST (bandit, pip-audit, semgrep).
 - **`crosstool-ng`** — a cross-compilation toolchain build environment built around [crosstool-ng](https://crosstool-ng.github.io/), for producing GCC cross-toolchains.
+- **`cpp`** — a native + cross C/C++ application dev environment: GCC **and** Clang, CMake/Ninja/Meson, Conan, gdb/lldb, and clang-tidy/clang-format/cppcheck/valgrind. Can mount a cross toolchain (see [cpp image](#cpp-image)) to build for non-host targets.
 
-Both variants bundle the same Claude Code and Codex agents behind an identical runtime contract (entrypoint, `SESSION_RUNNER` dispatch, git/`PROJECT_DIR` handling); they differ only in the pre-installed tooling. Select a variant with `--variant` (see below).
+All variants bundle the same Claude Code and Codex agents behind an identical runtime contract (entrypoint, `SESSION_RUNNER` dispatch, git/`PROJECT_DIR` handling); they differ only in the pre-installed tooling. Select a variant with `--variant` (see below).
 
 ## How It Works
 
@@ -77,7 +78,14 @@ To run the cross-compilation toolchain image instead of the default python image
 ralph-sandbox --variant crosstool-ng
 ```
 
-`--variant` selects which image the wrapper builds/runs (`python` by default, or `crosstool-ng`). It is independent of `--tool`: both variants support `claude` and `codex`. See [crosstool-ng image](#crosstool-ng-image) for toolchain-build guidance.
+To run the C/C++ dev image, optionally mounting a cross toolchain:
+
+```bash
+ralph-sandbox --variant cpp
+ralph-sandbox --variant cpp --toolchain-dir ~/x-tools/aarch64-unknown-linux-gnu
+```
+
+`--variant` selects which image the wrapper builds/runs (`python` by default, or `crosstool-ng` / `cpp`). It is independent of `--tool`: every variant supports `claude` and `codex`. See [crosstool-ng image](#crosstool-ng-image) and [cpp image](#cpp-image) for variant-specific guidance.
 
 By default the wrapper:
 
@@ -146,6 +154,7 @@ PROJECT_DIR=/absolute/path/to/your/project docker compose run ralph-login
 | `RALPH_PROMPT_FILE` | No | -- | Path to a custom prompt file (relative to `PROJECT_DIR`). Used by orchestrated mode to pass per-iteration or fixer prompts to the session runner. Falls back to `scripts/ralph/CLAUDE.md` when unset. |
 | `CLAUDE_CONFIG_DIR` | No | `~/.claude` | Path to Claude Code configuration directory |
 | `CODEX_CONFIG_DIR` | No | `~/.codex` | Path to OpenAI Codex configuration directory |
+| `CROSS_TOOLCHAIN_DIR` | No | -- | (cpp) In-container path to a mounted cross toolchain. Set automatically by the wrapper's `--toolchain-dir`; consumed by `cross-env`. |
 
 ### Build Arguments
 
@@ -186,9 +195,10 @@ The custom runner **can assume**:
 
 - Working directory is `PROJECT_DIR`
 - Git is configured and functional
-- Shared CLI tools are available on **both** variants: `claude`, `codex`, `node`, `bash`, `git`, `make`, `jq`
+- Shared CLI tools are available on **all** variants: `claude`, `codex`, `node`, `bash`, `git`, `make`, `jq`
   - the **python** image adds: `python`, `uv`, `hatch`, `ruff`, `pytest`, `mypy`, `pyright`, `coverage`, `bandit`, `pip-audit`, `semgrep`
   - the **crosstool-ng** image adds: `ct-ng`, `gcc`, `g++`, `python3`, and the crosstool-ng host build toolchain (`bison`, `flex`, `gawk`, `makeinfo`, `libtool`, …)
+  - the **cpp** image adds: `gcc`/`g++`, `clang`/`clang++`, `cmake`, `ninja`, `meson`, `pkg-config`, `conan`, `gdb`/`lldb`, `clang-tidy`, `clang-format`, `cppcheck`, `valgrind`, `ccache`, and `cross-env`
 - All environment variables (`PROJECT_DIR`, `RALPH_TOOL`, config dirs) are available but `RALPH_TOOL` and tool config dirs are **not validated** -- the custom runner decides what it needs
 
 The custom runner **receives**:
@@ -249,14 +259,15 @@ bin/ralph-sandbox \
 
 ## CI/CD
 
-Each image variant has its own build workflow (`publish-python.yml`, `publish-crosstool-ng.yml`). Pull requests build the affected image(s) to validate they still compile. Docker Hub pushes only happen from GitHub Releases:
+Each image variant has its own build workflow (`publish-python.yml`, `publish-crosstool-ng.yml`, `publish-cpp.yml`). Pull requests build the affected image(s) to validate they still compile. Docker Hub pushes only happen from GitHub Releases:
 
 - the **python** image publishes `davesnowdon/ralph-sandbox:python` and `:<release-tag>`
 - the **crosstool-ng** image publishes `davesnowdon/ralph-sandbox:crosstool-ng` and `:crosstool-ng-<release-tag>`
+- the **cpp** image publishes `davesnowdon/ralph-sandbox:cpp` and `:cpp-<release-tag>`
 
 There is no Docker Hub `:latest` tag — with more than one image variant it would be ambiguous. Repo scripts and the compose default use the local `ralph-sandbox:python` tag. `make tag` additionally stamps a local `ralph-sandbox:latest` alias, kept only for backward-compatibility with external local scripts that still reference it.
 
-`make check` covers **every** image variant by default — it lints the shell files once, then builds each image and runs the entrypoint integration suite against it. Pass `VARIANT=<name>` to scope a run to a single image; CI uses that to fan the variants out across a matrix (`make check VARIANT=python`, `VARIANT=crosstool-ng`). The same fan-out applies to `make docker-build`, `make test`, `make tag`, and `make push`.
+`make check` covers **every** image variant by default — it lints the shell files once, then builds each image and runs the entrypoint integration suite against it. Pass `VARIANT=<name>` to scope a run to a single image; CI uses that to fan the variants out across a matrix (`make check VARIANT=python`, `VARIANT=crosstool-ng`, `VARIANT=cpp`). The same fan-out applies to `make docker-build`, `make test`, `make tag`, and `make push`.
 
 ## Container Details
 
@@ -282,6 +293,14 @@ Shared across both variants (installed by `dockerfiles/common/install-agents.sh`
 - **crosstool-ng** (`ct-ng`) for building GCC cross-compilation toolchains
 - **Host build toolchain**: build-essential (gcc/g++/make), autoconf, automake, libtool, bison, flex, gperf, gawk, texinfo/makeinfo, help2man, ncurses, python3, meson, ninja, plus the archive/util deps crosstool-ng needs
 
+**cpp** image (`davesnowdon/ralph-sandbox:cpp`):
+
+- **Debian trixie** (slim base) — GCC 14 and Clang 19 from the distro
+- **Build systems**: CMake, Ninja, Meson, Make, autotools, pkg-config
+- **Package manager**: Conan 2
+- **Debug + analysis**: gdb, lldb, clang-tidy, clang-format, cppcheck, valgrind, ccache
+- **Cross-compilation**: `cross-env` helper + mountable toolchain (see below)
+
 ### crosstool-ng image
 
 The crosstool-ng image builds GCC cross-compilation toolchains with [`ct-ng`](https://crosstool-ng.github.io/docs/). A few things to know:
@@ -299,6 +318,30 @@ The crosstool-ng image builds GCC cross-compilation toolchains with [`ct-ng`](ht
 
 - **Network egress is required** during a build to download component tarballs, unless you pre-seed `CT_LOCAL_TARBALLS_DIR` (e.g. via `ct-ng source`).
 - **Builds are slow and disk-heavy** — a single toolchain can take many minutes and consume gigabytes; building all samples can take a day or more.
+
+### cpp image
+
+The `cpp` image is a native + cross C/C++ application dev environment. For host builds, just use `gcc`/`clang`/`cmake`/`conan` as normal. It pairs a compiler with a feedback loop (clang-tidy/clang-format/cppcheck/gdb) the way the python image pairs one with ruff/mypy/pytest.
+
+**Cross-compiling for another target.** Mount a prebuilt cross toolchain — one produced by the `crosstool-ng` image, or any existing GCC toolchain (`bin/<tuple>-gcc` layout) — with `--toolchain-dir`. The wrapper mounts it read-only at its host path and sets `CROSS_TOOLCHAIN_DIR`; the `cross-env` helper turns it into ready-to-use build config:
+
+```bash
+ralph-sandbox --variant cpp --toolchain-dir ~/x-tools/aarch64-unknown-linux-gnu
+# then, inside the container:
+cross-env info                                   # detected tuple / versions / next steps
+eval "$(cross-env env)"                           # toolchain on PATH + CC/CXX/AR/...
+cross-env cmake-toolchain build/cross.cmake
+cmake -S . -B build --toolchain build/cross.cmake && cmake --build build
+# or with Conan:
+cross-env conan-profile build/host.profile
+conan install . -pr:b=default -pr:h=build/host.profile --build=missing
+```
+
+Notes:
+- The toolchain is mounted at its **original host path** (not relocated) — crosstool-ng toolchains are not reliably relocatable. If the toolchain lives under `PROJECT_DIR` (e.g. built at `${PROJECT_DIR}/x-tools` by the crosstool-ng image) it is already mounted; `--toolchain-dir` still sets `CROSS_TOOLCHAIN_DIR` and skips the redundant mount.
+- A trixie-based cpp image can run bookworm-built crosstool-ng toolchains (glibc is backward-compatible).
+- `cross-env`'s Conan arch mapping is best-effort for common tuples (aarch64/arm/x86_64/riscv64); edit the generated profile if your target differs.
+- Point `CONAN_HOME` under `PROJECT_DIR` (e.g. `export CONAN_HOME="${PROJECT_DIR}/.conan2"`) to persist the Conan cache across container runs.
 
 ### Security
 

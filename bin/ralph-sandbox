@@ -13,7 +13,8 @@ Usage:
 Options:
   --project-dir PATH        Use an existing project directory. Defaults to the current git root or cwd.
   --tool NAME               Tool to use: claude or codex. Defaults to $RALPH_TOOL or claude.
-  --variant NAME            Image variant to run: python or crosstool-ng. Defaults to python.
+  --variant NAME            Image variant to run: python, crosstool-ng or cpp. Defaults to python.
+  --toolchain-dir PATH      (cpp) Mount a cross toolchain read-only; exposed in-container as $CROSS_TOOLCHAIN_DIR.
   --session-runner PATH     Custom runner script to replace the built-in Ralph loop.
   --claude-config-dir PATH  Claude config directory. Defaults to $CLAUDE_CONFIG_DIR or $HOME/.claude.
   --codex-config-dir PATH   Codex config directory. Defaults to $CODEX_CONFIG_DIR or $HOME/.codex.
@@ -25,6 +26,7 @@ Examples:
   bin/ralph-sandbox
   bin/ralph-sandbox --tool codex
   bin/ralph-sandbox --variant crosstool-ng
+  bin/ralph-sandbox --variant cpp --toolchain-dir ~/x-tools/aarch64-unknown-linux-gnu
   bin/ralph-sandbox --session-runner ./my-runner.sh --project-dir /path/to/project
   bin/ralph-sandbox -- 10
 EOF
@@ -79,6 +81,7 @@ git_common_dir() {
 project_dir="${PROJECT_DIR:-}"
 ralph_tool="${RALPH_TOOL:-claude}"
 variant="python"
+toolchain_dir="${CROSS_TOOLCHAIN_DIR:-}"
 claude_config_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 codex_config_dir="${CODEX_CONFIG_DIR:-${HOME}/.codex}"
 session_runner=""
@@ -101,6 +104,11 @@ while [[ $# -gt 0 ]]; do
     --variant)
       require_arg "$1" "${2:-}"
       variant="$2"
+      shift 2
+      ;;
+    --toolchain-dir)
+      require_arg "$1" "${2:-}"
+      toolchain_dir="$2"
       shift 2
       ;;
     --session-runner)
@@ -154,8 +162,12 @@ case "${variant}" in
     sandbox_image="ralph-sandbox:crosstool-ng"
     sandbox_dockerfile="dockerfiles/crosstool-ng/Dockerfile"
     ;;
+  cpp)
+    sandbox_image="ralph-sandbox:cpp"
+    sandbox_dockerfile="dockerfiles/cpp/Dockerfile"
+    ;;
   *)
-    echo "ERROR: Unsupported variant: ${variant}. Use 'python' or 'crosstool-ng'." >&2
+    echo "ERROR: Unsupported variant: ${variant}. Use 'python', 'crosstool-ng' or 'cpp'." >&2
     exit 2
     ;;
 esac
@@ -205,6 +217,18 @@ if [[ -n "${common_dir}" && "${common_dir}" != "${project_dir}/.git" ]]; then
   needs_common_mount=1
 fi
 
+# Resolve a cross toolchain dir (cpp variant). Mount it at its own host path
+# (source==target) so it works from the path it was built at -- crosstool-ng
+# toolchains are not reliably relocatable. Skip the mount if it already lives
+# under PROJECT_DIR (already mounted); CROSS_TOOLCHAIN_DIR is exported either way.
+toolchain_mount=0
+if [[ -n "${toolchain_dir}" ]]; then
+  toolchain_dir="$(abs_existing_dir "${toolchain_dir}")"
+  if [[ "${toolchain_dir}/" != "${project_dir}/"* ]]; then
+    toolchain_mount=1
+  fi
+fi
+
 tmp_override="$(mktemp "${TMPDIR:-/tmp}/ralph-sandbox.compose.override.XXXXXX.yml")"
 cleanup() {
   rm -f -- "${tmp_override}"
@@ -217,7 +241,7 @@ services:
 EOF
 
 # Collect extra volume mounts (tool config, git common dir, session runner).
-if [[ ${needs_common_mount} -eq 1 ]] || [[ "${ralph_tool}" == "claude" ]] || [[ "${ralph_tool}" == "codex" ]] || [[ -n "${session_runner}" ]]; then
+if [[ ${needs_common_mount} -eq 1 ]] || [[ "${ralph_tool}" == "claude" ]] || [[ "${ralph_tool}" == "codex" ]] || [[ -n "${session_runner}" ]] || [[ ${toolchain_mount} -eq 1 ]]; then
   echo "    volumes:" >>"${tmp_override}"
 fi
 
@@ -250,6 +274,15 @@ if [[ -n "${session_runner}" ]]; then
       - type: bind
         source: $(yaml_dquote "${session_runner}")
         target: /run/ralph/session-runner.sh
+        read_only: true
+EOF
+fi
+
+if [[ ${toolchain_mount} -eq 1 ]]; then
+  cat >>"${tmp_override}" <<EOF
+      - type: bind
+        source: $(yaml_dquote "${toolchain_dir}")
+        target: $(yaml_dquote "${toolchain_dir}")
         read_only: true
 EOF
 fi
@@ -290,6 +323,7 @@ env \
   SESSION_RUNNER="${session_runner_env}" \
   SANDBOX_IMAGE="${sandbox_image}" \
   SANDBOX_DOCKERFILE="${sandbox_dockerfile}" \
+  CROSS_TOOLCHAIN_DIR="${toolchain_dir}" \
   "${config_env[@]}" \
   "${compose_cmd[@]}" \
   "${ralph_args[@]}"

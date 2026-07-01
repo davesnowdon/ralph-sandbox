@@ -6,17 +6,20 @@
 
 - a default built-in runner based on upstream `ralph.sh`
 - Claude Code and OpenAI Codex CLI installed in every image variant
-- two image variants, selected via `VARIANT` (Makefile) / `--variant` (wrapper):
+- three image variants, selected via `VARIANT` (Makefile) / `--variant` (wrapper):
   - `python` (default): Python tooling (`uv`, `hatch`, `ruff`, `pytest`, `mypy`, `pyright`, `coverage`) plus SAST (`bandit`, `pip-audit`, `semgrep`)
   - `crosstool-ng`: a crosstool-ng cross-compilation toolchain build environment (`ct-ng` plus the host build toolchain)
+  - `cpp`: a native + cross C/C++ application dev environment (GCC + Clang, CMake/Ninja/Meson, Conan, gdb/lldb, clang-tidy/clang-format/cppcheck/valgrind) with a mountable cross toolchain
 - a supported custom-runner mode via `SESSION_RUNNER`
 
 Key files:
 
-- `dockerfiles/common/ralph-entrypoint.sh`: the shared entrypoint contract (used by both variants)
+- `dockerfiles/common/ralph-entrypoint.sh`: the shared entrypoint contract (used by all variants)
 - `dockerfiles/common/install-agents.sh`: shared agent-runtime install (Node, Claude Code, Codex, Ralph, non-root user, git config)
 - `dockerfiles/python/Dockerfile`: python image build
 - `dockerfiles/crosstool-ng/Dockerfile`: crosstool-ng image build
+- `dockerfiles/cpp/Dockerfile`: cpp image build
+- `dockerfiles/cpp/cross-env.sh`: cpp helper that turns a mounted toolchain into a CMake toolchain file / Conan profile
 - `docker-compose.yml`: base runtime contract (variant-selectable via `SANDBOX_IMAGE` / `SANDBOX_DOCKERFILE`)
 - `bin/ralph-sandbox`: local wrapper that prepares mounts and env
 - `tests/test-entrypoint.sh`: integration test for entrypoint behavior (runs against any variant)
@@ -41,6 +44,7 @@ Clients orchestrating this sandbox should expect and adhere to the following:
 - Tool config mounts are only required when the selected workflow actually uses them:
   - `/claude_config` for Claude Code
   - `/codex_config` for Codex
+- The `cpp` variant can optionally mount a cross toolchain: the wrapper's `--toolchain-dir` bind-mounts it read-only at its **original host path** (source==target, because crosstool-ng toolchains are not reliably relocatable) and exports `CROSS_TOOLCHAIN_DIR` as the stable in-container interface. The mount is skipped when the toolchain already lives under `PROJECT_DIR` (already mounted); the env var is set either way.
 
 Custom runner assumptions:
 
@@ -78,13 +82,14 @@ make fmt-check                  # shfmt (variant-independent)
 make test                       # build + test EVERY image variant
 make check                      # lint + fmt-check + test (ALL variants)
 make check VARIANT=crosstool-ng # scope: lint + fmt-check + test one image
+make check VARIANT=cpp          # scope: the cpp image only
 make docker-build               # build every image (VARIANT=… for one)
 make push                       # tag + push every image (VARIANT=… for one)
 ```
 
 `make check` currently runs:
 
-- `shellcheck` on `bin/ralph-sandbox`, `tests/test-entrypoint.sh`, and the shared `dockerfiles/common/*.sh` scripts
+- `shellcheck` on `bin/ralph-sandbox`, `tests/test-entrypoint.sh`, the shared `dockerfiles/common/*.sh` scripts, and `dockerfiles/cpp/cross-env.sh`
 - `shfmt -d` formatting verification for those shell files
 - Docker image build validation for **every** variant (or the one named by `VARIANT`)
 - `tests/test-entrypoint.sh` against **each** built image
@@ -103,6 +108,8 @@ At minimum, this is required for changes touching any of:
 - `dockerfiles/common/install-agents.sh` (shared install — affects **every** variant)
 - `dockerfiles/python/Dockerfile`
 - `dockerfiles/crosstool-ng/Dockerfile`
+- `dockerfiles/cpp/Dockerfile`
+- `dockerfiles/cpp/cross-env.sh`
 - `docker-compose.yml`
 - `docker-compose.claude.yml`
 - `docker-compose.codex.yml`
