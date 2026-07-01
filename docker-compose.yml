@@ -1,6 +1,6 @@
 services:
   ralph:
-    build:
+    build: &sandbox_build
       context: .
       # Variant-selectable (set by bin/ralph-sandbox --variant). Defaults to python.
       dockerfile: ${SANDBOX_DOCKERFILE:-dockerfiles/python/Dockerfile}
@@ -40,6 +40,9 @@ services:
     restart: "no"
 
   ralph-login:
+    # Shares the ralph service's variant-selectable build so `--service
+    # ralph-login --variant <v> --build` can build the image itself.
+    build: *sandbox_build
     image: ${SANDBOX_IMAGE:-ralph-sandbox:latest}
     init: true
     entrypoint: ["/bin/bash"]

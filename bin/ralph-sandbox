@@ -30,6 +30,15 @@ Examples:
 EOF
 }
 
+require_arg() {
+  # Ensure a value-taking flag received a non-empty value; fail with a usage
+  # error instead of a `set -u` "unbound variable" crash when it is omitted.
+  if [[ -z "${2:-}" ]]; then
+    echo "ERROR: Option '$1' requires a value." >&2
+    exit 2
+  fi
+}
+
 abs_existing_dir() {
   local path="$1"
   if [[ ! -d "${path}" ]]; then
@@ -80,30 +89,37 @@ declare -a ralph_args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --project-dir)
+      require_arg "$1" "${2:-}"
       project_dir="$2"
       shift 2
       ;;
     --tool)
+      require_arg "$1" "${2:-}"
       ralph_tool="$2"
       shift 2
       ;;
     --variant)
+      require_arg "$1" "${2:-}"
       variant="$2"
       shift 2
       ;;
     --session-runner)
+      require_arg "$1" "${2:-}"
       session_runner="$2"
       shift 2
       ;;
     --claude-config-dir)
+      require_arg "$1" "${2:-}"
       claude_config_dir="$2"
       shift 2
       ;;
     --codex-config-dir)
+      require_arg "$1" "${2:-}"
       codex_config_dir="$2"
       shift 2
       ;;
     --service)
+      require_arg "$1" "${2:-}"
       service="$2"
       shift 2
       ;;
