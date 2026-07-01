@@ -1,14 +1,14 @@
-name: Docker Image
+name: Docker Image (crosstool-ng)
 
 on:
   pull_request:
     paths:
-      - 'dockerfiles/python/**'
+      - 'dockerfiles/crosstool-ng/**'
       - 'dockerfiles/common/**'
       - '.dockerignore'
       - 'docker-compose.yml'
       - 'bin/ralph-sandbox'
-      - '.github/workflows/publish-python.yml'
+      - '.github/workflows/publish-crosstool-ng.yml'
   release:
     types: [published]
 
@@ -39,8 +39,11 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: dockerfiles/python/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          file: dockerfiles/crosstool-ng/Dockerfile
+          # amd64 only for PR validation: the arm64 leg compiles crosstool-ng
+          # under QEMU emulation, which is prohibitively slow. The release build
+          # below still produces both architectures.
+          platforms: linux/amd64
           push: false
 
       - name: Build and push release image
@@ -48,9 +51,11 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: dockerfiles/python/Dockerfile
+          file: dockerfiles/crosstool-ng/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: davesnowdon/ralph-sandbox:${{ github.event.release.tag_name }}
+          tags: |
+            davesnowdon/ralph-sandbox:crosstool-ng
+            davesnowdon/ralph-sandbox:crosstool-ng-${{ github.event.release.tag_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

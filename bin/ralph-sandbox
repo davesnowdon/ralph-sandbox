@@ -13,6 +13,7 @@ Usage:
 Options:
   --project-dir PATH        Use an existing project directory. Defaults to the current git root or cwd.
   --tool NAME               Tool to use: claude or codex. Defaults to $RALPH_TOOL or claude.
+  --variant NAME            Image variant to run: python or crosstool-ng. Defaults to python.
   --session-runner PATH     Custom runner script to replace the built-in Ralph loop.
   --claude-config-dir PATH  Claude config directory. Defaults to $CLAUDE_CONFIG_DIR or $HOME/.claude.
   --codex-config-dir PATH   Codex config directory. Defaults to $CODEX_CONFIG_DIR or $HOME/.codex.
@@ -23,6 +24,7 @@ Options:
 Examples:
   bin/ralph-sandbox
   bin/ralph-sandbox --tool codex
+  bin/ralph-sandbox --variant crosstool-ng
   bin/ralph-sandbox --session-runner ./my-runner.sh --project-dir /path/to/project
   bin/ralph-sandbox -- 10
 EOF
@@ -67,6 +69,7 @@ git_common_dir() {
 
 project_dir="${PROJECT_DIR:-}"
 ralph_tool="${RALPH_TOOL:-claude}"
+variant="python"
 claude_config_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 codex_config_dir="${CODEX_CONFIG_DIR:-${HOME}/.codex}"
 session_runner=""
@@ -82,6 +85,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --tool)
       ralph_tool="$2"
+      shift 2
+      ;;
+    --variant)
+      variant="$2"
       shift 2
       ;;
     --session-runner)
@@ -119,6 +126,23 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Resolve the compose image + dockerfile for the selected variant. These feed
+# docker-compose.yml via ${SANDBOX_IMAGE} / ${SANDBOX_DOCKERFILE}.
+case "${variant}" in
+  python)
+    sandbox_image="ralph-sandbox:latest"
+    sandbox_dockerfile="dockerfiles/python/Dockerfile"
+    ;;
+  crosstool-ng)
+    sandbox_image="ralph-sandbox:crosstool-ng"
+    sandbox_dockerfile="dockerfiles/crosstool-ng/Dockerfile"
+    ;;
+  *)
+    echo "ERROR: Unsupported variant: ${variant}. Use 'python' or 'crosstool-ng'." >&2
+    exit 2
+    ;;
+esac
 
 if [[ -z "${project_dir}" ]]; then
   project_dir="$(git_repo_root "${PWD}")"
@@ -248,6 +272,8 @@ env \
   PROJECT_DIR="${project_dir}" \
   RALPH_TOOL="${ralph_tool}" \
   SESSION_RUNNER="${session_runner_env}" \
+  SANDBOX_IMAGE="${sandbox_image}" \
+  SANDBOX_DOCKERFILE="${sandbox_dockerfile}" \
   "${config_env[@]}" \
   "${compose_cmd[@]}" \
   "${ralph_args[@]}"

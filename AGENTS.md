@@ -5,17 +5,21 @@
 `ralph-sandbox` packages Ralph into a Docker sandbox with:
 
 - a default built-in runner based on upstream `ralph.sh`
-- Claude Code and OpenAI Codex CLI installed in the image
-- Python tooling installed in the image (`uv`, `hatch`, `ruff`, `pytest`, `mypy`, `pyright`, `coverage`)
-- SAST / security tooling installed in the image (`bandit`, `pip-audit`, `semgrep`)
+- Claude Code and OpenAI Codex CLI installed in every image variant
+- two image variants, selected via `VARIANT` (Makefile) / `--variant` (wrapper):
+  - `python` (default): Python tooling (`uv`, `hatch`, `ruff`, `pytest`, `mypy`, `pyright`, `coverage`) plus SAST (`bandit`, `pip-audit`, `semgrep`)
+  - `crosstool-ng`: a crosstool-ng cross-compilation toolchain build environment (`ct-ng` plus the host build toolchain)
 - a supported custom-runner mode via `SESSION_RUNNER`
 
 Key files:
 
-- `dockerfiles/python/Dockerfile`: image build and entrypoint contract
-- `docker-compose.yml`: base runtime contract
+- `dockerfiles/common/ralph-entrypoint.sh`: the shared entrypoint contract (used by both variants)
+- `dockerfiles/common/install-agents.sh`: shared agent-runtime install (Node, Claude Code, Codex, Ralph, non-root user, git config)
+- `dockerfiles/python/Dockerfile`: python image build
+- `dockerfiles/crosstool-ng/Dockerfile`: crosstool-ng image build
+- `docker-compose.yml`: base runtime contract (variant-selectable via `SANDBOX_IMAGE` / `SANDBOX_DOCKERFILE`)
 - `bin/ralph-sandbox`: local wrapper that prepares mounts and env
-- `tests/test-entrypoint.sh`: integration test for entrypoint behavior
+- `tests/test-entrypoint.sh`: integration test for entrypoint behavior (runs against any variant)
 - `README.md`: user-facing contract and examples
 
 ## Runtime Contract
@@ -47,7 +51,7 @@ Custom runner assumptions:
 
 ## Change Rules For Agents
 
-Agents making changes in this repo must preserve the documented contract across `Dockerfile`, compose config, wrapper script, tests, and `README.md`.
+Agents making changes in this repo must preserve the documented contract across the Dockerfiles, the shared `dockerfiles/common/` scripts, compose config, wrapper script, tests, and `README.md`. The entrypoint and agent-runtime install are shared by both variants — a change to `dockerfiles/common/**` affects every image, so validate all variants.
 
 When changing container startup, mounts, env vars, runner dispatch, or docs for orchestrators:
 
@@ -64,21 +68,23 @@ If behavior changes, update `README.md` and `tests/test-entrypoint.sh` in the sa
 This repo uses shell- and Docker-focused validation rather than a Python
 package workflow.
 
-Primary commands:
+Primary commands (the default `VARIANT` is `python`; set `VARIANT=crosstool-ng`
+to target the other image):
 
 ```bash
 make lint
 make fmt-check
-make test
-make check
+make test                       # builds + tests the python image
+make check                      # lint + fmt-check + test (python)
+make check VARIANT=crosstool-ng # same, for the crosstool-ng image
 ```
 
 `make check` currently runs:
 
-- `shellcheck` on `bin/ralph-sandbox` and `tests/test-entrypoint.sh`
+- `shellcheck` on `bin/ralph-sandbox`, `tests/test-entrypoint.sh`, and the shared `dockerfiles/common/*.sh` scripts
 - `shfmt -d` formatting verification for those shell files
-- Docker image build validation
-- `tests/test-entrypoint.sh`
+- Docker image build validation for the selected `VARIANT`
+- `tests/test-entrypoint.sh` against the built image
 
 ## Verification
 
@@ -90,13 +96,19 @@ make check
 
 At minimum, this is required for changes touching any of:
 
+- `dockerfiles/common/ralph-entrypoint.sh` (shared entrypoint — run **both** variants)
+- `dockerfiles/common/install-agents.sh` (shared install — run **both** variants)
 - `dockerfiles/python/Dockerfile`
+- `dockerfiles/crosstool-ng/Dockerfile`
 - `docker-compose.yml`
 - `docker-compose.claude.yml`
 - `docker-compose.codex.yml`
 - `bin/ralph-sandbox`
 - `tests/test-entrypoint.sh`
 - `README.md` sections describing runtime behavior
+
+For a change to the shared `dockerfiles/common/**` scripts, run `make check`
+**and** `make check VARIANT=crosstool-ng` so both images are validated.
 
 If the change alters the contract consumed by `ralph-plus-plus`, also run the
 relevant `ralph-plus-plus` checks and a manual cross-repo integration pass.

@@ -4,7 +4,12 @@ A Docker-based sandbox for running the [Ralph](https://github.com/snarktank/ralp
 
 Ralph is an autonomous agent loop that iteratively implements software features by reading a structured PRD (`prd.json`), selecting the highest-priority incomplete story, implementing it, running quality checks, committing changes, and repeating until all stories pass. Each iteration spawns a fresh AI instance with clean context -- only git history, a learnings file (`progress.txt`), and task statuses carry forward between iterations.
 
-This sandbox wraps Ralph in a hardened Docker container with modern Python tooling pre-installed, making it straightforward to point at any project directory and let Ralph work autonomously.
+This sandbox wraps Ralph in a hardened Docker container, making it straightforward to point at any project directory and let Ralph work autonomously. Two image variants are provided:
+
+- **`python`** (default) — modern Python tooling (uv, hatch, ruff, pytest, mypy, pyright, coverage) plus SAST (bandit, pip-audit, semgrep).
+- **`crosstool-ng`** — a cross-compilation toolchain build environment built around [crosstool-ng](https://crosstool-ng.github.io/), for producing GCC cross-toolchains.
+
+Both variants bundle the same Claude Code and Codex agents behind an identical runtime contract (entrypoint, `SESSION_RUNNER` dispatch, git/`PROJECT_DIR` handling); they differ only in the pre-installed tooling. Select a variant with `--variant` (see below).
 
 ## How It Works
 
@@ -65,6 +70,14 @@ To use OpenAI Codex instead of Claude Code:
 ```bash
 ralph-sandbox --tool codex
 ```
+
+To run the cross-compilation toolchain image instead of the default python image:
+
+```bash
+ralph-sandbox --variant crosstool-ng
+```
+
+`--variant` selects which image the wrapper builds/runs (`python` by default, or `crosstool-ng`). It is independent of `--tool`: both variants support `claude` and `codex`. See [crosstool-ng image](#crosstool-ng-image) for toolchain-build guidance.
 
 By default the wrapper:
 
@@ -138,10 +151,13 @@ PROJECT_DIR=/absolute/path/to/your/project docker compose run ralph-login
 
 | Argument | Default | Description |
 |---|---|---|
-| `NODE_MAJOR` | `20` | Node.js major version |
-| `RALPH_REF` | `6c53cb0` | Pinned upstream Ralph commit used by default |
-| `RALPH_UID` | `1000` | UID for the non-root `ralph` user inside the container |
-| `RALPH_GID` | `1000` | GID for the non-root `ralph` group inside the container |
+| `NODE_MAJOR` | `20` | Node.js major version (both variants) |
+| `RALPH_REF` | `6c53cb0` | Pinned upstream Ralph commit used by default (both variants) |
+| `RALPH_UID` | `1000` | UID for the non-root `ralph` user inside the container (both variants) |
+| `RALPH_GID` | `1000` | GID for the non-root `ralph` group inside the container (both variants) |
+| `CLAUDE_CODE_VERSION` | `2.1.177` | Pinned Claude Code CLI version (both variants) |
+| `CODEX_VERSION` | `0.139.0` | Pinned OpenAI Codex CLI version (both variants) |
+| `CROSSTOOL_NG_VERSION` | `1.28.0` | Pinned crosstool-ng release (crosstool-ng image only) |
 
 To pin Ralph to a specific version:
 
@@ -170,7 +186,9 @@ The custom runner **can assume**:
 
 - Working directory is `PROJECT_DIR`
 - Git is configured and functional
-- All CLI tools are available: `claude`, `codex`, `node`, `python`, `uv`, `hatch`, `ruff`, `pytest`, `mypy`, `pyright`, `coverage`, `bandit`, `pip-audit`, `semgrep`, `make`, `git`, `jq`
+- Shared CLI tools are available on **both** variants: `claude`, `codex`, `node`, `bash`, `git`, `make`, `jq`
+  - the **python** image adds: `python`, `uv`, `hatch`, `ruff`, `pytest`, `mypy`, `pyright`, `coverage`, `bandit`, `pip-audit`, `semgrep`
+  - the **crosstool-ng** image adds: `ct-ng`, `gcc`, `g++`, `python3`, and the crosstool-ng host build toolchain (`bison`, `flex`, `gawk`, `makeinfo`, `libtool`, …)
 - All environment variables (`PROJECT_DIR`, `RALPH_TOOL`, config dirs) are available but `RALPH_TOOL` and tool config dirs are **not validated** -- the custom runner decides what it needs
 
 The custom runner **receives**:
@@ -231,19 +249,56 @@ bin/ralph-sandbox \
 
 ## CI/CD
 
-Pull requests build the Docker image to validate that it still compiles. Docker Hub pushes only happen from GitHub Releases, and the published image tag matches the release tag.
+Each image variant has its own build workflow (`publish-python.yml`, `publish-crosstool-ng.yml`). Pull requests build the affected image(s) to validate they still compile. Docker Hub pushes only happen from GitHub Releases:
+
+- the **python** image publishes `davesnowdon/ralph-sandbox:python` and `:<release-tag>`
+- the **crosstool-ng** image publishes `davesnowdon/ralph-sandbox:crosstool-ng` and `:crosstool-ng-<release-tag>`
+
+There is no Docker Hub `:latest` tag — with more than one image variant it would be ambiguous. The local build is still tagged `ralph-sandbox:latest` (via `make tag`) so local tooling and the compose default keep working.
+
+`make check` runs in CI across both variants (`make check VARIANT=python` and `VARIANT=crosstool-ng`): it lints the shell files and runs the entrypoint integration suite against each image.
 
 ## Container Details
 
 ### What's included
 
-- **Python 3.12** (slim base)
-- **Node.js 20** (for Claude Code CLI)
+Shared across both variants (installed by `dockerfiles/common/install-agents.sh`):
+
+- **Node.js 20** (runtime for the agent CLIs)
 - **Claude Code CLI** (`@anthropic-ai/claude-code`)
 - **OpenAI Codex CLI** (`@openai/codex`)
+- **Upstream Ralph** (`ralph.sh`) and the shared entrypoint (`dockerfiles/common/ralph-entrypoint.sh`)
+- **make**, **git**, **jq**
+
+**python** image (default — Docker Hub `davesnowdon/ralph-sandbox:python`; local build tagged `ralph-sandbox:latest`):
+
+- **Python 3.12** (slim base)
 - **Python tooling**: uv, hatch, ruff, pytest, mypy, pyright, coverage
 - **SAST / security tooling**: bandit, pip-audit, semgrep
-- **Build tool**: make (for Makefile-driven repos)
+
+**crosstool-ng** image (`davesnowdon/ralph-sandbox:crosstool-ng`):
+
+- **Debian bookworm** (slim base)
+- **crosstool-ng** (`ct-ng`) for building GCC cross-compilation toolchains
+- **Host build toolchain**: build-essential (gcc/g++/make), autoconf, automake, libtool, bison, flex, gperf, gawk, texinfo/makeinfo, help2man, ncurses, python3, meson, ninja, plus the archive/util deps crosstool-ng needs
+
+### crosstool-ng image
+
+The crosstool-ng image builds GCC cross-compilation toolchains with [`ct-ng`](https://crosstool-ng.github.io/docs/). A few things to know:
+
+- **Non-root by design.** crosstool-ng refuses to run `ct-ng build` as root. The container already runs as the non-root `ralph` user, so builds work without the experimental `CT_ALLOW_BUILD_AS_ROOT` override.
+- **Persist output and the source cache under `PROJECT_DIR`.** `ct-ng build` writes the finished toolchain to `CT_PREFIX_DIR` and downloads component tarballs (gcc, binutils, glibc, gmp, mpfr, mpc, isl) into a cache. Point both at paths inside the bind-mounted project so they survive the container:
+
+  ```bash
+  # inside the container (e.g. from a custom session runner)
+  export CT_PREFIX_DIR="${PROJECT_DIR}/x-tools"
+  export CT_LOCAL_TARBALLS_DIR="${PROJECT_DIR}/.ct-ng-cache"
+  ct-ng aarch64-unknown-linux-gnu   # pick a sample config
+  ct-ng build
+  ```
+
+- **Network egress is required** during a build to download component tarballs, unless you pre-seed `CT_LOCAL_TARBALLS_DIR` (e.g. via `ct-ng source`).
+- **Builds are slow and disk-heavy** — a single toolchain can take many minutes and consume gigabytes; building all samples can take a day or more.
 
 ### Security
 
