@@ -341,7 +341,8 @@ Notes:
 - The toolchain is mounted at its **original host path** (not relocated) — crosstool-ng toolchains are not reliably relocatable. If the toolchain lives under `PROJECT_DIR` (e.g. built at `${PROJECT_DIR}/x-tools` by the crosstool-ng image) it is already mounted; `--toolchain-dir` still sets `CROSS_TOOLCHAIN_DIR` and skips the redundant mount.
 - A trixie-based cpp image can run bookworm-built crosstool-ng toolchains (glibc is backward-compatible).
 - `cross-env`'s Conan arch mapping is best-effort for common tuples (aarch64/arm/x86_64/riscv64); edit the generated profile if your target differs.
-- Point `CONAN_HOME` under `PROJECT_DIR` (e.g. `export CONAN_HOME="${PROJECT_DIR}/.conan2"`) to persist the Conan cache across container runs.
+- A default Conan build profile is pre-seeded in the image (via `conan profile detect`), so `-pr:b=default` works out of the box.
+- Point `CONAN_HOME` under `PROJECT_DIR` (e.g. `export CONAN_HOME="${PROJECT_DIR}/.conan2"`) to persist the Conan cache across container runs. If you point it at a fresh directory, run `conan profile detect` once there to recreate the default profile.
 
 ### Security
 

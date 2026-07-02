@@ -119,4 +119,14 @@ RUN mkdir -p /workspace && chown -R ralph:ralph /workspace
 WORKDIR /workspace
 USER ralph
 
+# ---- Seed a default Conan build profile for the ralph user ----
+# A fresh Conan install has no `default` profile, so the documented cross-build
+# (`conan install ... -pr:b=default`) fails until `conan profile detect` runs.
+# Bake it in as the ralph user (in the default CONAN_HOME at /home/ralph/.conan2)
+# so the feedback loop works out of the box. Runs after USER ralph so the profile
+# is owned by, and lands in the home of, the runtime user.
+RUN conan profile detect --force \
+    && conan profile show >/dev/null \
+    && echo "conan default profile ready"
+
 ENTRYPOINT ["ralph-entrypoint"]
