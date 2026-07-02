@@ -10,14 +10,25 @@
 VARIANTS := python crosstool-ng
 VARIANT ?= python
 
-# An explicit VARIANT (command line or environment) scopes the aggregate targets
-# to that one image; otherwise they fan out over every variant.
-ifeq ($(origin VARIANT),command line)
-SELECTED_VARIANTS := $(VARIANT)
+# An explicit, non-empty VARIANT (command line or environment) scopes the
+# aggregate targets to that one image; otherwise they fan out over every variant.
+# An empty VARIANT= is treated as unset (fan out to all) so it can't silently
+# select nothing and produce a false green.
+ifeq ($(strip $(VARIANT)),)
+SELECTED_VARIANTS := $(VARIANTS)
+else ifeq ($(origin VARIANT),command line)
+SELECTED_VARIANTS := $(strip $(VARIANT))
 else ifeq ($(origin VARIANT),environment)
-SELECTED_VARIANTS := $(VARIANT)
+SELECTED_VARIANTS := $(strip $(VARIANT))
 else
 SELECTED_VARIANTS := $(VARIANTS)
+endif
+
+# Fail fast on an unknown variant rather than doing partial work (e.g. trying to
+# build a nonexistent dockerfiles/<name>/Dockerfile).
+UNKNOWN_VARIANTS := $(filter-out $(VARIANTS),$(SELECTED_VARIANTS))
+ifneq ($(UNKNOWN_VARIANTS),)
+$(error Unknown VARIANT '$(UNKNOWN_VARIANTS)'. Supported: $(VARIANTS))
 endif
 
 SHELL_FILES := bin/ralph-sandbox tests/test-entrypoint.sh \
