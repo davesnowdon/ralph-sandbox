@@ -147,7 +147,7 @@ done
 # docker-compose.yml via ${SANDBOX_IMAGE} / ${SANDBOX_DOCKERFILE}.
 case "${variant}" in
   python)
-    sandbox_image="ralph-sandbox:latest"
+    sandbox_image="ralph-sandbox:python"
     sandbox_dockerfile="dockerfiles/python/Dockerfile"
     ;;
   crosstool-ng)

@@ -12,7 +12,7 @@ services:
         RALPH_UID: "${UID:-1000}"
         RALPH_GID: "${RALPH_GID:-1000}"
 
-    image: ${SANDBOX_IMAGE:-ralph-sandbox:latest}
+    image: ${SANDBOX_IMAGE:-ralph-sandbox:python}
 
     init: true
     working_dir: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
@@ -43,7 +43,7 @@ services:
     # Shares the ralph service's variant-selectable build so `--service
     # ralph-login --variant <v> --build` can build the image itself.
     build: *sandbox_build
-    image: ${SANDBOX_IMAGE:-ralph-sandbox:latest}
+    image: ${SANDBOX_IMAGE:-ralph-sandbox:python}
     init: true
     entrypoint: ["/bin/bash"]
     working_dir: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}

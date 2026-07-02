@@ -254,7 +254,7 @@ Each image variant has its own build workflow (`publish-python.yml`, `publish-cr
 - the **python** image publishes `davesnowdon/ralph-sandbox:python` and `:<release-tag>`
 - the **crosstool-ng** image publishes `davesnowdon/ralph-sandbox:crosstool-ng` and `:crosstool-ng-<release-tag>`
 
-There is no Docker Hub `:latest` tag — with more than one image variant it would be ambiguous. The local build is still tagged `ralph-sandbox:latest` (via `make tag`) so local tooling and the compose default keep working.
+There is no Docker Hub `:latest` tag — with more than one image variant it would be ambiguous. Repo scripts and the compose default use the local `ralph-sandbox:python` tag. `make tag` additionally stamps a local `ralph-sandbox:latest` alias, kept only for backward-compatibility with external local scripts that still reference it.
 
 `make check` runs in CI across both variants (`make check VARIANT=python` and `VARIANT=crosstool-ng`): it lints the shell files and runs the entrypoint integration suite against each image.
 
@@ -270,7 +270,7 @@ Shared across both variants (installed by `dockerfiles/common/install-agents.sh`
 - **Upstream Ralph** (`ralph.sh`) and the shared entrypoint (`dockerfiles/common/ralph-entrypoint.sh`)
 - **make**, **git**, **jq**
 
-**python** image (default — Docker Hub `davesnowdon/ralph-sandbox:python`; local build tagged `ralph-sandbox:latest`):
+**python** image (default — Docker Hub `davesnowdon/ralph-sandbox:python`; local build tagged `ralph-sandbox:python`, plus a `ralph-sandbox:latest` compat alias):
 
 - **Python 3.12** (slim base)
 - **Python tooling**: uv, hatch, ruff, pytest, mypy, pyright, coverage

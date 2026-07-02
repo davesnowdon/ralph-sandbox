@@ -17,11 +17,12 @@ EXPECTED_TOOLS_crosstool-ng := claude codex node python3 git make ct-ng gcc g++ 
 EXPECTED_TOOLS := $(EXPECTED_TOOLS_$(VARIANT))
 
 # Publish tags are variant-specific. With more than one image, a Docker Hub
-# :latest tag is ambiguous, so it is not published. The python variant keeps the
-# local-only ralph-sandbox:latest tag (for local tools/compose defaults) but
-# publishes only davesnowdon/ralph-sandbox:python to the registry.
+# :latest tag is ambiguous, so it is not published. Repo scripts and the compose
+# default use the local ralph-sandbox:python tag; a local ralph-sandbox:latest
+# alias is also produced for backward-compat with external scripts that still
+# reference it. Only davesnowdon/ralph-sandbox:python is pushed to the registry.
 ifeq ($(VARIANT),python)
-RELEASE_TAGS := ralph-sandbox:latest davesnowdon/ralph-sandbox:python
+RELEASE_TAGS := ralph-sandbox:python ralph-sandbox:latest davesnowdon/ralph-sandbox:python
 PUSH_TAGS := davesnowdon/ralph-sandbox:python
 else
 RELEASE_TAGS := ralph-sandbox:$(VARIANT) davesnowdon/ralph-sandbox:$(VARIANT)
