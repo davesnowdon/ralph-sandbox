@@ -1,8 +1,9 @@
 services:
   ralph:
-    build:
+    build: &sandbox_build
       context: .
-      dockerfile: dockerfiles/python/Dockerfile
+      # Variant-selectable (set by bin/ralph-sandbox --variant). Defaults to python.
+      dockerfile: ${SANDBOX_DOCKERFILE:-dockerfiles/python/Dockerfile}
       args:
         NODE_MAJOR: "20"
         # Pin if you want repeatability (recommended): set to a commit SHA
@@ -11,7 +12,7 @@ services:
         RALPH_UID: "${UID:-1000}"
         RALPH_GID: "${RALPH_GID:-1000}"
 
-    image: ralph-sandbox:latest
+    image: ${SANDBOX_IMAGE:-ralph-sandbox:python}
 
     init: true
     working_dir: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
@@ -39,7 +40,10 @@ services:
     restart: "no"
 
   ralph-login:
-    image: ralph-sandbox:latest
+    # Shares the ralph service's variant-selectable build so `--service
+    # ralph-login --variant <v> --build` can build the image itself.
+    build: *sandbox_build
+    image: ${SANDBOX_IMAGE:-ralph-sandbox:python}
     init: true
     entrypoint: ["/bin/bash"]
     working_dir: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}

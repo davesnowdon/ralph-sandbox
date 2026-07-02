@@ -10,7 +10,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 SANDBOX_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd -P)"
 
-IMAGE="ralph-sandbox:test"
+# IMAGE / DOCKERFILE / EXPECTED_TOOLS are overridable via env so the same suite
+# can exercise any image variant (the Makefile passes them per VARIANT). The
+# defaults keep this script runnable standalone against the python image.
+IMAGE="${IMAGE:-ralph-sandbox:test}"
+DOCKERFILE="${DOCKERFILE:-dockerfiles/python/Dockerfile}"
 PASS=0
 FAIL=0
 CLEANUP_DIRS=()
@@ -47,8 +51,8 @@ make_temp_repo() {
   echo "${tmp}"
 }
 
-echo "==> Building image: ${IMAGE}"
-docker build -t "${IMAGE}" -f "${SANDBOX_ROOT}/dockerfiles/python/Dockerfile" "${SANDBOX_ROOT}" --quiet
+echo "==> Building image: ${IMAGE} (from ${DOCKERFILE})"
+docker build -t "${IMAGE}" -f "${SANDBOX_ROOT}/${DOCKERFILE}" "${SANDBOX_ROOT}" --quiet
 
 echo
 echo "==> Test 1: SESSION_RUNNER runs a custom script"
@@ -196,7 +200,7 @@ echo "==> Test 7: required toolchain usable by the non-root runtime user"
 # Runs as the default (ralph) user with the default entrypoint overridden.
 # `command -v` resolves shims AND follows them, so this also catches uv tool
 # environments that live in a location the ralph user cannot read.
-TOOLS="make pyright uv ruff pytest mypy hatch coverage bandit pip-audit semgrep"
+TOOLS="${EXPECTED_TOOLS:-make pyright uv ruff pytest mypy hatch coverage bandit pip-audit semgrep}"
 OUTPUT="$(docker run --rm --entrypoint bash "${IMAGE}" -c \
   'for t in '"${TOOLS}"'; do command -v "$t" || echo "MISSING:$t"; done' 2>&1)" &&
   RC=0 || RC=$?

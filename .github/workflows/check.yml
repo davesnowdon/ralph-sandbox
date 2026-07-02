@@ -8,6 +8,10 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [python, crosstool-ng]
     permissions:
       contents: read
     steps:
@@ -23,4 +27,4 @@ jobs:
           sudo chmod +x /usr/local/bin/shfmt
 
       - name: Run checks
-        run: make check
+        run: make check VARIANT=${{ matrix.variant }}
