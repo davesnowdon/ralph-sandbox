@@ -68,23 +68,26 @@ If behavior changes, update `README.md` and `tests/test-entrypoint.sh` in the sa
 This repo uses shell- and Docker-focused validation rather than a Python
 package workflow.
 
-Primary commands (the default `VARIANT` is `python`; set `VARIANT=crosstool-ng`
-to target the other image):
+The build/test/tag/push targets run across **every** image variant by default,
+so the make contract covers all images. Pass `VARIANT=<name>` to scope a target
+to a single image (the CI matrix and fast local iteration do this):
 
 ```bash
-make lint
-make fmt-check
-make test                       # builds + tests the python image
-make check                      # lint + fmt-check + test (python)
-make check VARIANT=crosstool-ng # same, for the crosstool-ng image
+make lint                       # shellcheck (variant-independent)
+make fmt-check                  # shfmt (variant-independent)
+make test                       # build + test EVERY image variant
+make check                      # lint + fmt-check + test (ALL variants)
+make check VARIANT=crosstool-ng # scope: lint + fmt-check + test one image
+make docker-build               # build every image (VARIANT=… for one)
+make push                       # tag + push every image (VARIANT=… for one)
 ```
 
 `make check` currently runs:
 
 - `shellcheck` on `bin/ralph-sandbox`, `tests/test-entrypoint.sh`, and the shared `dockerfiles/common/*.sh` scripts
 - `shfmt -d` formatting verification for those shell files
-- Docker image build validation for the selected `VARIANT`
-- `tests/test-entrypoint.sh` against the built image
+- Docker image build validation for **every** variant (or the one named by `VARIANT`)
+- `tests/test-entrypoint.sh` against **each** built image
 
 ## Verification
 
@@ -96,8 +99,8 @@ make check
 
 At minimum, this is required for changes touching any of:
 
-- `dockerfiles/common/ralph-entrypoint.sh` (shared entrypoint — run **both** variants)
-- `dockerfiles/common/install-agents.sh` (shared install — run **both** variants)
+- `dockerfiles/common/ralph-entrypoint.sh` (shared entrypoint — affects **every** variant)
+- `dockerfiles/common/install-agents.sh` (shared install — affects **every** variant)
 - `dockerfiles/python/Dockerfile`
 - `dockerfiles/crosstool-ng/Dockerfile`
 - `docker-compose.yml`
@@ -107,8 +110,9 @@ At minimum, this is required for changes touching any of:
 - `tests/test-entrypoint.sh`
 - `README.md` sections describing runtime behavior
 
-For a change to the shared `dockerfiles/common/**` scripts, run `make check`
-**and** `make check VARIANT=crosstool-ng` so both images are validated.
+`make check` (no `VARIANT`) validates every image variant in one run, so it
+already covers changes to the shared `dockerfiles/common/**` scripts. Use
+`VARIANT=<name>` only to scope a run to a single image.
 
 If the change alters the contract consumed by `ralph-plus-plus`, also run the
 relevant `ralph-plus-plus` checks and a manual cross-repo integration pass.

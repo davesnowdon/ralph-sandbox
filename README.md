@@ -256,7 +256,7 @@ Each image variant has its own build workflow (`publish-python.yml`, `publish-cr
 
 There is no Docker Hub `:latest` tag — with more than one image variant it would be ambiguous. Repo scripts and the compose default use the local `ralph-sandbox:python` tag. `make tag` additionally stamps a local `ralph-sandbox:latest` alias, kept only for backward-compatibility with external local scripts that still reference it.
 
-`make check` runs in CI across both variants (`make check VARIANT=python` and `VARIANT=crosstool-ng`): it lints the shell files and runs the entrypoint integration suite against each image.
+`make check` covers **every** image variant by default — it lints the shell files once, then builds each image and runs the entrypoint integration suite against it. Pass `VARIANT=<name>` to scope a run to a single image; CI uses that to fan the variants out across a matrix (`make check VARIANT=python`, `VARIANT=crosstool-ng`). The same fan-out applies to `make docker-build`, `make test`, `make tag`, and `make push`.
 
 ## Container Details
 

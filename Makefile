@@ -1,8 +1,24 @@
-.PHONY: lint fmt-check docker-build test check tag push
+.PHONY: lint fmt-check docker-build test check tag push \
+	_docker-build _test _tag _push
 
-# Image variant to build/test/tag. Selects dockerfiles/$(VARIANT)/Dockerfile.
+# Image variants. The docker-build/test/check/tag/push targets run across ALL
+# variants by default so the make contract covers every image. Pass VARIANT=<name>
+# to scope a target to a single image (used by the CI matrix and for fast local
+# iteration). VARIANT selects dockerfiles/$(VARIANT)/Dockerfile for the
+# single-image (_-prefixed) targets.
 # Supported: python (default), crosstool-ng.
+VARIANTS := python crosstool-ng
 VARIANT ?= python
+
+# An explicit VARIANT (command line or environment) scopes the aggregate targets
+# to that one image; otherwise they fan out over every variant.
+ifeq ($(origin VARIANT),command line)
+SELECTED_VARIANTS := $(VARIANT)
+else ifeq ($(origin VARIANT),environment)
+SELECTED_VARIANTS := $(VARIANT)
+else
+SELECTED_VARIANTS := $(VARIANTS)
+endif
 
 SHELL_FILES := bin/ralph-sandbox tests/test-entrypoint.sh \
 	dockerfiles/common/ralph-entrypoint.sh dockerfiles/common/install-agents.sh
@@ -35,17 +51,48 @@ lint:
 fmt-check:
 	shfmt -d -i 2 -ci $(SHELL_FILES)
 
+# Aggregate targets fan out over $(SELECTED_VARIANTS) -- every image by default,
+# or just the one named by VARIANT. Each variant is delegated to the matching
+# single-image `_`-prefixed target through a recursive make.
 docker-build:
+	@for v in $(SELECTED_VARIANTS); do \
+	  echo "==> docker-build ($$v)"; \
+	  $(MAKE) --no-print-directory _docker-build VARIANT=$$v || exit $$?; \
+	done
+
+test:
+	@for v in $(SELECTED_VARIANTS); do \
+	  echo "==> test ($$v)"; \
+	  $(MAKE) --no-print-directory _test VARIANT=$$v || exit $$?; \
+	done
+
+check: lint fmt-check
+	@for v in $(SELECTED_VARIANTS); do \
+	  echo "==> check: build + test ($$v)"; \
+	  $(MAKE) --no-print-directory _test VARIANT=$$v || exit $$?; \
+	done
+
+tag:
+	@for v in $(SELECTED_VARIANTS); do \
+	  $(MAKE) --no-print-directory _tag VARIANT=$$v || exit $$?; \
+	done
+
+push:
+	@for v in $(SELECTED_VARIANTS); do \
+	  $(MAKE) --no-print-directory _push VARIANT=$$v || exit $$?; \
+	done
+
+# --- Single-image targets (operate on exactly one $(VARIANT)) ---------------
+
+_docker-build:
 	docker build -t $(BUILD_IMAGE) -f $(DOCKERFILE) .
 
-test: docker-build
+_test: _docker-build
 	IMAGE=$(BUILD_IMAGE) DOCKERFILE=$(DOCKERFILE) VARIANT=$(VARIANT) EXPECTED_TOOLS="$(EXPECTED_TOOLS)" tests/test-entrypoint.sh
 
-check: lint fmt-check test
-
-# Re-tag the freshly built image with the publish names. Depends on docker-build
+# Re-tag the freshly built image with the publish names. Depends on _docker-build
 # so the tags always point at the current source (a no-op rebuild is cheap).
-tag: docker-build
+_tag: _docker-build
 	@for t in $(RELEASE_TAGS); do \
 	  echo "Tagging $(BUILD_IMAGE) -> $$t"; \
 	  docker tag $(BUILD_IMAGE) "$$t"; \
@@ -53,7 +100,7 @@ tag: docker-build
 
 # Push the registry tags to Docker Hub. Requires `docker login`. The local-only
 # ralph-sandbox tags have no registry namespace and are not pushed.
-push: tag
+_push: _tag
 	@for t in $(PUSH_TAGS); do \
 	  echo "Pushing $$t"; \
 	  docker push "$$t"; \
