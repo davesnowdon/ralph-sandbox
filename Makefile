@@ -6,8 +6,8 @@
 # to scope a target to a single image (used by the CI matrix and for fast local
 # iteration). VARIANT selects dockerfiles/$(VARIANT)/Dockerfile for the
 # single-image (_-prefixed) targets.
-# Supported: python (default), crosstool-ng.
-VARIANTS := python crosstool-ng
+# Supported: python (default), crosstool-ng, cpp.
+VARIANTS := python crosstool-ng cpp
 VARIANT ?= python
 
 # An explicit, non-empty VARIANT (command line or environment) scopes the
@@ -32,7 +32,8 @@ $(error Unknown VARIANT '$(UNKNOWN_VARIANTS)'. Supported: $(VARIANTS))
 endif
 
 SHELL_FILES := bin/ralph-sandbox tests/test-entrypoint.sh \
-	dockerfiles/common/ralph-entrypoint.sh dockerfiles/common/install-agents.sh
+	dockerfiles/common/ralph-entrypoint.sh dockerfiles/common/install-agents.sh \
+	dockerfiles/cpp/cross-env.sh
 DOCKERFILE := dockerfiles/$(VARIANT)/Dockerfile
 BUILD_IMAGE := ralph-sandbox:$(VARIANT)-test
 
@@ -41,6 +42,7 @@ BUILD_IMAGE := ralph-sandbox:$(VARIANT)-test
 # ships the cross-compilation toolchain build environment.
 EXPECTED_TOOLS_python := make pyright uv ruff pytest mypy hatch coverage bandit pip-audit semgrep
 EXPECTED_TOOLS_crosstool-ng := claude codex node python3 git make ct-ng gcc g++ bison flex makeinfo
+EXPECTED_TOOLS_cpp := claude codex node git make cmake ninja meson pkg-config gcc g++ clang clang++ clang-tidy clang-format cppcheck gdb ccache conan cross-env
 EXPECTED_TOOLS := $(EXPECTED_TOOLS_$(VARIANT))
 
 # Publish tags are variant-specific. With more than one image, a Docker Hub
