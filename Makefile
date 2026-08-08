@@ -101,9 +101,16 @@ push:
 
 # --- Single-image targets (operate on exactly one $(VARIANT)) ---------------
 
-# python-ui layers FROM the python build image, so building it (including a
-# standalone `make ... VARIANT=python-ui`) first refreshes the python base.
+# python-ui layers FROM a python image. Its Dockerfile's BASE_IMAGE defaults to
+# the PUBLISHED docker.io/davesnowdon/ralph-sandbox:python so clean-host builds
+# (wrapper --build, plain docker build, CI PR validation) resolve without a
+# local base; the make targets instead build the python base from the current
+# checkout first and override BASE_IMAGE to layer on it, so a standalone
+# `make check VARIANT=python-ui` tests this source tree, not the last release.
+# BASE_IMAGE is exported to the test script too so its rebuild uses the same base.
 ifeq ($(VARIANT),python-ui)
+BASE_IMAGE := ralph-sandbox:python-test
+DOCKER_BUILD_ARGS := --build-arg BASE_IMAGE=$(BASE_IMAGE)
 _docker-build: _build-base-python
 .PHONY: _build-base-python
 _build-base-python:
@@ -112,10 +119,10 @@ _build-base-python:
 endif
 
 _docker-build:
-	docker build -t $(BUILD_IMAGE) -f $(DOCKERFILE) .
+	docker build $(DOCKER_BUILD_ARGS) -t $(BUILD_IMAGE) -f $(DOCKERFILE) .
 
 _test: _docker-build
-	IMAGE=$(BUILD_IMAGE) DOCKERFILE=$(DOCKERFILE) VARIANT=$(VARIANT) EXPECTED_TOOLS="$(EXPECTED_TOOLS)" tests/test-entrypoint.sh
+	IMAGE=$(BUILD_IMAGE) DOCKERFILE=$(DOCKERFILE) VARIANT=$(VARIANT) BASE_IMAGE="$(BASE_IMAGE)" EXPECTED_TOOLS="$(EXPECTED_TOOLS)" tests/test-entrypoint.sh
 
 # Re-tag the freshly built image with the publish names. Depends on _docker-build
 # so the tags always point at the current source (a no-op rebuild is cheap).
