@@ -10,11 +10,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 SANDBOX_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd -P)"
 
-# IMAGE / DOCKERFILE / EXPECTED_TOOLS are overridable via env so the same suite
-# can exercise any image variant (the Makefile passes them per VARIANT). The
-# defaults keep this script runnable standalone against the python image.
+# IMAGE / DOCKERFILE / VARIANT / EXPECTED_TOOLS are overridable via env so the
+# same suite can exercise any image variant (the Makefile passes them per
+# VARIANT). The defaults keep this script runnable standalone against the
+# python image. BASE_IMAGE (optional) is forwarded as a --build-arg so the
+# python-ui build layers on the same locally built base the Makefile used,
+# instead of the Dockerfile's published-image default.
 IMAGE="${IMAGE:-ralph-sandbox:test}"
 DOCKERFILE="${DOCKERFILE:-dockerfiles/python/Dockerfile}"
+VARIANT="${VARIANT:-python}"
+declare -a BUILD_ARGS=()
+if [[ -n "${BASE_IMAGE:-}" ]]; then
+  BUILD_ARGS+=(--build-arg "BASE_IMAGE=${BASE_IMAGE}")
+fi
 PASS=0
 FAIL=0
 CLEANUP_DIRS=()
@@ -52,7 +60,7 @@ make_temp_repo() {
 }
 
 echo "==> Building image: ${IMAGE} (from ${DOCKERFILE})"
-docker build -t "${IMAGE}" -f "${SANDBOX_ROOT}/${DOCKERFILE}" "${SANDBOX_ROOT}" --quiet
+docker build "${BUILD_ARGS[@]}" -t "${IMAGE}" -f "${SANDBOX_ROOT}/${DOCKERFILE}" "${SANDBOX_ROOT}" --quiet
 
 echo
 echo "==> Test 1: SESSION_RUNNER runs a custom script"
@@ -209,6 +217,55 @@ if [[ ${RC} -eq 0 ]] && ! echo "${OUTPUT}" | grep -q "MISSING:"; then
   log_pass "Full toolchain present on PATH for ralph: ${TOOLS}"
 else
   log_fail "Toolchain incomplete for ralph (rc=${RC}). Output: ${OUTPUT}"
+fi
+
+if [[ "${VARIANT}" == "python-ui" ]]; then
+  echo
+  echo "==> Test 8: (python-ui) headless chromium renders DOM as ralph, hardened"
+  # Proves the browser layer actually works, not just that the CLI is on PATH:
+  # runs as the image's default non-root ralph user under the same hardening
+  # docker-compose.yml applies (all capabilities dropped, no privilege
+  # escalation), launches the baked chromium headlessly on a data: URL, and
+  # asserts the expected text in the dumped DOM. Also asserts the baked
+  # PLAYWRIGHT_BROWSERS_PATH contract: fixed /opt/playwright location, writable
+  # by ralph so a project pinning its own playwright can self-install a
+  # matching browser revision into the cache at run time.
+  # --no-sandbox: chromium's own sandbox needs privileges the hardened
+  # container deliberately withholds; the container is the sandbox here.
+  OUTPUT="$(docker run --rm --cap-drop ALL --security-opt no-new-privileges \
+    --entrypoint bash "${IMAGE}" -c '
+      set -euo pipefail
+      echo "BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-unset}"
+      if [[ -w "${PLAYWRIGHT_BROWSERS_PATH:-/nonexistent}" ]]; then
+        echo "BROWSERS_PATH_WRITABLE"
+      fi
+      chrome="$(find "${PLAYWRIGHT_BROWSERS_PATH:-/nonexistent}" -maxdepth 3 \
+        -type f -name chrome | sort | head -1)"
+      if [[ -z "${chrome}" ]]; then
+        echo "NO_CHROMIUM_BINARY"
+        exit 1
+      fi
+      "${chrome}" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
+        --dump-dom "data:text/html,<title>t</title><p id=smoke>RALPH_UI_SMOKE_OK</p>"
+    ' 2>&1)" && RC=0 || RC=$?
+
+  if echo "${OUTPUT}" | grep -q "BROWSERS_PATH=/opt/playwright"; then
+    log_pass "PLAYWRIGHT_BROWSERS_PATH baked to /opt/playwright"
+  else
+    log_fail "PLAYWRIGHT_BROWSERS_PATH wrong. Output: ${OUTPUT}"
+  fi
+
+  if echo "${OUTPUT}" | grep -q "BROWSERS_PATH_WRITABLE"; then
+    log_pass "/opt/playwright writable by ralph (per-project browser self-install)"
+  else
+    log_fail "/opt/playwright not writable by ralph. Output: ${OUTPUT}"
+  fi
+
+  if [[ ${RC} -eq 0 ]] && echo "${OUTPUT}" | grep -q 'id="smoke">RALPH_UI_SMOKE_OK'; then
+    log_pass "Headless chromium rendered the page and exited cleanly (hardened, as ralph)"
+  else
+    log_fail "Headless chromium render failed (rc=${RC}). Output: ${OUTPUT}"
+  fi
 fi
 
 echo
