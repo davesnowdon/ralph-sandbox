@@ -10,11 +10,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 SANDBOX_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd -P)"
 
-# IMAGE / DOCKERFILE / EXPECTED_TOOLS are overridable via env so the same suite
-# can exercise any image variant (the Makefile passes them per VARIANT). The
-# defaults keep this script runnable standalone against the python image.
+# IMAGE / DOCKERFILE / VARIANT / EXPECTED_TOOLS are overridable via env so the
+# same suite can exercise any image variant (the Makefile passes them per
+# VARIANT). The defaults keep this script runnable standalone against the
+# python image. BASE_IMAGE (optional) is forwarded as a --build-arg so the
+# python-ui build layers on the same locally built base the Makefile used,
+# instead of the Dockerfile's published-image default.
 IMAGE="${IMAGE:-ralph-sandbox:test}"
 DOCKERFILE="${DOCKERFILE:-dockerfiles/python/Dockerfile}"
+VARIANT="${VARIANT:-python}"
+declare -a BUILD_ARGS=()
+if [[ -n "${BASE_IMAGE:-}" ]]; then
+  BUILD_ARGS+=(--build-arg "BASE_IMAGE=${BASE_IMAGE}")
+fi
 PASS=0
 FAIL=0
 CLEANUP_DIRS=()
@@ -52,7 +60,7 @@ make_temp_repo() {
 }
 
 echo "==> Building image: ${IMAGE} (from ${DOCKERFILE})"
-docker build -t "${IMAGE}" -f "${SANDBOX_ROOT}/${DOCKERFILE}" "${SANDBOX_ROOT}" --quiet
+docker build "${BUILD_ARGS[@]}" -t "${IMAGE}" -f "${SANDBOX_ROOT}/${DOCKERFILE}" "${SANDBOX_ROOT}" --quiet
 
 echo
 echo "==> Test 1: SESSION_RUNNER runs a custom script"
@@ -209,6 +217,68 @@ if [[ ${RC} -eq 0 ]] && ! echo "${OUTPUT}" | grep -q "MISSING:"; then
   log_pass "Full toolchain present on PATH for ralph: ${TOOLS}"
 else
   log_fail "Toolchain incomplete for ralph (rc=${RC}). Output: ${OUTPUT}"
+fi
+
+if [[ "${VARIANT}" == "python-ui" ]]; then
+  echo
+  echo "==> Test 8: (python-ui) playwright driver renders DOM as ralph, hardened"
+  # Proves the browser layer actually works, not just that the CLI is on PATH:
+  # runs as the image's default non-root ralph user under the same hardening
+  # and /dev/shm sizing docker-compose.yml applies (all capabilities dropped,
+  # no privilege escalation, shm_size 1gb — no --disable-dev-shm-usage escape
+  # hatch), and launches chromium through the playwright driver — the same
+  # launch path a consuming project's pytest suite uses — via the interpreter
+  # of the isolated uv tool environment (the image deliberately ships no
+  # importable playwright in the base python env). Renders a data: URL and
+  # asserts the expected text in the DOM plus a clean close. Also asserts the
+  # baked PLAYWRIGHT_BROWSERS_PATH contract: fixed /opt/playwright location,
+  # writable by ralph so a project pinning a different playwright version can
+  # run `uv run playwright install chromium` to add its matching revision.
+  OUTPUT="$(docker run --rm --cap-drop ALL --security-opt no-new-privileges \
+    --shm-size 1g \
+    --entrypoint bash "${IMAGE}" -c '
+      set -euo pipefail
+      echo "BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-unset}"
+      if [[ -w "${PLAYWRIGHT_BROWSERS_PATH:-/nonexistent}" ]]; then
+        echo "BROWSERS_PATH_WRITABLE"
+      fi
+      py="$(uv tool dir)/playwright/bin/python"
+      if [[ ! -x "${py}" ]]; then
+        echo "NO_PLAYWRIGHT_TOOL_ENV"
+        exit 1
+      fi
+      "${py}" - <<PYEOF
+from playwright.sync_api import sync_playwright
+
+with sync_playwright() as p:
+    browser = p.chromium.launch()
+    page = browser.new_page()
+    page.goto("data:text/html,<title>t</title><p id=smoke>RALPH_UI_SMOKE_OK</p>")
+    print("DOM:" + page.content())
+    browser.close()
+print("LAUNCH_CLEAN")
+PYEOF
+    ' 2>&1)" && RC=0 || RC=$?
+
+  if echo "${OUTPUT}" | grep -q "BROWSERS_PATH=/opt/playwright"; then
+    log_pass "PLAYWRIGHT_BROWSERS_PATH baked to /opt/playwright"
+  else
+    log_fail "PLAYWRIGHT_BROWSERS_PATH wrong. Output: ${OUTPUT}"
+  fi
+
+  if echo "${OUTPUT}" | grep -q "BROWSERS_PATH_WRITABLE"; then
+    log_pass "/opt/playwright writable by ralph (playwright install for other versions)"
+  else
+    log_fail "/opt/playwright not writable by ralph. Output: ${OUTPUT}"
+  fi
+
+  if [[ ${RC} -eq 0 ]] &&
+    echo "${OUTPUT}" | grep -q 'id="smoke">RALPH_UI_SMOKE_OK' &&
+    echo "${OUTPUT}" | grep -q "LAUNCH_CLEAN"; then
+    log_pass "Playwright driver launched chromium, rendered the DOM, closed cleanly (hardened, as ralph)"
+  else
+    log_fail "Playwright driver launch failed (rc=${RC}). Output: ${OUTPUT}"
+  fi
 fi
 
 echo

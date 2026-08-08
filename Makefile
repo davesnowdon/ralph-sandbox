@@ -1,4 +1,4 @@
-.PHONY: lint fmt-check docker-build test check tag push \
+.PHONY: lint fmt-check compose-config-test docker-build test check tag push \
 	_docker-build _test _tag _push
 
 # Image variants. The docker-build/test/check/tag/push targets run across ALL
@@ -6,8 +6,10 @@
 # to scope a target to a single image (used by the CI matrix and for fast local
 # iteration). VARIANT selects dockerfiles/$(VARIANT)/Dockerfile for the
 # single-image (_-prefixed) targets.
-# Supported: python (default), crosstool-ng, cpp.
-VARIANTS := python crosstool-ng cpp
+# Supported: python (default), python-ui, crosstool-ng, cpp.
+# Order matters: python-ui layers FROM the python build image, so python is
+# listed (and therefore built) first when fanning out over all variants.
+VARIANTS := python python-ui crosstool-ng cpp
 VARIANT ?= python
 
 # An explicit, non-empty VARIANT (command line or environment) scopes the
@@ -32,15 +34,18 @@ $(error Unknown VARIANT '$(UNKNOWN_VARIANTS)'. Supported: $(VARIANTS))
 endif
 
 SHELL_FILES := bin/ralph-sandbox tests/test-entrypoint.sh \
+	tests/test-compose-config.sh \
 	dockerfiles/common/ralph-entrypoint.sh dockerfiles/common/install-agents.sh \
 	dockerfiles/cpp/cross-env.sh
 DOCKERFILE := dockerfiles/$(VARIANT)/Dockerfile
 BUILD_IMAGE := ralph-sandbox:$(VARIANT)-test
 
 # Tools the entrypoint test asserts are present for the non-root ralph user.
-# The python image ships the Python dev/SAST stack; the crosstool-ng image
-# ships the cross-compilation toolchain build environment.
+# The python image ships the Python dev/SAST stack; python-ui adds the
+# headless-browser e2e layer on top of it; the crosstool-ng image ships the
+# cross-compilation toolchain build environment.
 EXPECTED_TOOLS_python := make pyright uv ruff pytest mypy hatch coverage bandit pip-audit semgrep
+EXPECTED_TOOLS_python-ui := $(EXPECTED_TOOLS_python) playwright
 EXPECTED_TOOLS_crosstool-ng := claude codex node python3 git make ct-ng gcc g++ bison flex makeinfo
 EXPECTED_TOOLS_cpp := claude codex node git make cmake ninja meson pkg-config gcc g++ clang clang++ clang-tidy clang-format cppcheck gdb ccache conan cross-env
 EXPECTED_TOOLS := $(EXPECTED_TOOLS_$(VARIANT))
@@ -64,6 +69,11 @@ lint:
 fmt-check:
 	shfmt -d -i 2 -ci $(SHELL_FILES)
 
+# Static docker-compose.yml contract checks (shm_size, BASE_IMAGE passthrough).
+# Needs docker but no image build, so `check` runs it before the build+test loop.
+compose-config-test:
+	tests/test-compose-config.sh
+
 # Aggregate targets fan out over $(SELECTED_VARIANTS) -- every image by default,
 # or just the one named by VARIANT. Each variant is delegated to the matching
 # single-image `_`-prefixed target through a recursive make.
@@ -79,7 +89,7 @@ test:
 	  $(MAKE) --no-print-directory _test VARIANT=$$v || exit $$?; \
 	done
 
-check: lint fmt-check
+check: lint fmt-check compose-config-test
 	@for v in $(SELECTED_VARIANTS); do \
 	  echo "==> check: build + test ($$v)"; \
 	  $(MAKE) --no-print-directory _test VARIANT=$$v || exit $$?; \
@@ -97,11 +107,28 @@ push:
 
 # --- Single-image targets (operate on exactly one $(VARIANT)) ---------------
 
+# python-ui layers FROM a python image. Its Dockerfile's BASE_IMAGE defaults to
+# the PUBLISHED docker.io/davesnowdon/ralph-sandbox:python so clean-host builds
+# (wrapper --build, plain docker build, CI PR validation) resolve without a
+# local base; the make targets instead build the python base from the current
+# checkout first and override BASE_IMAGE to layer on it, so a standalone
+# `make check VARIANT=python-ui` tests this source tree, not the last release.
+# BASE_IMAGE is exported to the test script too so its rebuild uses the same base.
+ifeq ($(VARIANT),python-ui)
+BASE_IMAGE := ralph-sandbox:python-test
+DOCKER_BUILD_ARGS := --build-arg BASE_IMAGE=$(BASE_IMAGE)
+_docker-build: _build-base-python
+.PHONY: _build-base-python
+_build-base-python:
+	@echo "==> docker-build (python base for python-ui)"
+	@$(MAKE) --no-print-directory _docker-build VARIANT=python
+endif
+
 _docker-build:
-	docker build -t $(BUILD_IMAGE) -f $(DOCKERFILE) .
+	docker build $(DOCKER_BUILD_ARGS) -t $(BUILD_IMAGE) -f $(DOCKERFILE) .
 
 _test: _docker-build
-	IMAGE=$(BUILD_IMAGE) DOCKERFILE=$(DOCKERFILE) VARIANT=$(VARIANT) EXPECTED_TOOLS="$(EXPECTED_TOOLS)" tests/test-entrypoint.sh
+	IMAGE=$(BUILD_IMAGE) DOCKERFILE=$(DOCKERFILE) VARIANT=$(VARIANT) BASE_IMAGE="$(BASE_IMAGE)" EXPECTED_TOOLS="$(EXPECTED_TOOLS)" tests/test-entrypoint.sh
 
 # Re-tag the freshly built image with the publish names. Depends on _docker-build
 # so the tags always point at the current source (a no-op rebuild is cheap).

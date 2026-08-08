@@ -11,7 +11,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [python, crosstool-ng, cpp]
+        # python-ui is clean-runner-safe: `make check VARIANT=python-ui` builds
+        # the python base from the checkout first and layers on it via
+        # --build-arg BASE_IMAGE=ralph-sandbox:python-test.
+        variant: [python, python-ui, crosstool-ng, cpp]
     permissions:
       contents: read
     steps:
