@@ -5,6 +5,13 @@ services:
       # Variant-selectable (set by bin/ralph-sandbox --variant). Defaults to python.
       dockerfile: ${SANDBOX_DOCKERFILE:-dockerfiles/python/Dockerfile}
       args:
+        # NOTE: the agent/base args below (NODE_MAJOR..RALPH_GID) only take
+        # effect when the selected dockerfile builds a BASE image (python,
+        # crosstool-ng, cpp). A python-ui build starts FROM the already-built
+        # BASE_IMAGE, so they cannot affect it — they are inherited from, and
+        # fixed by, that base. To customize them for python-ui, build a local
+        # python base with the desired args first and point BASE_IMAGE at its
+        # tag (see README "python-ui image").
         NODE_MAJOR: "20"
         # Pin if you want repeatability (recommended): set to a commit SHA
         # RALPH_REF: "a1b2c3d4..."

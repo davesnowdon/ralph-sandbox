@@ -27,17 +27,20 @@ USER root
 # Coder/reviewer agents and gate checks (e.g. a `make e2e` step folded into a
 # repo-parity command) need a real headless browser in-container. Browsers
 # land at a FIXED, non-$HOME path so per-run home/config mounts can't shadow
-# them. The dir is left ralph-writable on purpose: browser builds are keyed to
-# the playwright version, so a project pinning a different playwright can
-# self-install its matching revision into the same cache path at run time
-# (egress exists; the baked chromium serves the common case download-free).
-# Headless only — no X/VNC.
+# them. Headless only — no X/VNC.
 #
 # The playwright CLI is installed as an isolated uv tool: the image deliberately
 # does NOT provide an importable Python `playwright` library. Consuming projects
-# declare playwright as their own (dev) dependency and `uv sync` it in-tree —
-# browser builds are keyed to the playwright version, so per-project pinning +
-# the ralph-writable cache below keeps project and browser versions coherent.
+# declare playwright as their own (dev) dependency and `uv sync` it in-tree.
+#
+# Version skew: installing a playwright package does NOT download a browser —
+# browser builds are keyed to the playwright version, and only the
+# PLAYWRIGHT_VERSION revision is baked. A project pinning any other version
+# must run `uv run playwright install chromium` as part of its environment
+# setup or e2e command (it no-ops when the matching revision is already
+# present). That works because egress exists and /opt/playwright is left
+# ralph-writable on purpose; the baked chromium serves the PLAYWRIGHT_VERSION
+# common case download-free.
 #
 # PLAYWRIGHT_VERSION is pinned so the baked browser revision is reproducible
 # (the chromium revision is derived from the playwright version). Upgrades are

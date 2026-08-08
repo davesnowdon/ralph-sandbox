@@ -167,15 +167,17 @@ PROJECT_DIR=/absolute/path/to/your/project docker compose run ralph-login
 
 | Argument | Default | Description |
 |---|---|---|
-| `NODE_MAJOR` | `20` | Node.js major version (all variants) |
-| `RALPH_REF` | `6c53cb0` | Pinned upstream Ralph commit used by default (all variants) |
-| `RALPH_UID` | `1000` | UID for the non-root `ralph` user inside the container (all variants) |
-| `RALPH_GID` | `1000` | GID for the non-root `ralph` group inside the container (all variants) |
-| `CLAUDE_CODE_VERSION` | `2.1.177` | Pinned Claude Code CLI version (all variants) |
-| `CODEX_VERSION` | `0.139.0` | Pinned OpenAI Codex CLI version (all variants) |
+| `NODE_MAJOR` | `20` | Node.js major version (base images¹) |
+| `RALPH_REF` | `6c53cb0` | Pinned upstream Ralph commit used by default (base images¹) |
+| `RALPH_UID` | `1000` | UID for the non-root `ralph` user inside the container (base images¹) |
+| `RALPH_GID` | `1000` | GID for the non-root `ralph` group inside the container (base images¹) |
+| `CLAUDE_CODE_VERSION` | `2.1.177` | Pinned Claude Code CLI version (base images¹) |
+| `CODEX_VERSION` | `0.139.0` | Pinned OpenAI Codex CLI version (base images¹) |
 | `CROSSTOOL_NG_VERSION` | `1.28.0` | Pinned crosstool-ng release (crosstool-ng image only) |
 | `BASE_IMAGE` | `docker.io/davesnowdon/ralph-sandbox:python` | (python-ui only) The python image that python-ui layers `FROM`. See [python-ui image](#python-ui-image) for the two-tier resolution. |
 | `PLAYWRIGHT_VERSION` | `1.62.0` | (python-ui only) Pinned playwright CLI version; the baked chromium revision derives from it. Upgrades are deliberate and validated by the python-ui browser smoke test. |
+
+¹ These apply when a **base** image (`python`, `crosstool-ng`, `cpp`) is built. **python-ui** starts `FROM` an already-built `BASE_IMAGE`, so passing them to a python-ui build has no effect — they are inherited from, and fixed by, the selected `BASE_IMAGE` (with the published default: the published image's values, e.g. UID/GID 1000). To customize them for python-ui, build a local python base first — see [python-ui image](#python-ui-image).
 
 To pin Ralph to a specific version:
 
@@ -320,12 +322,23 @@ Kept separate from `python` so pure-Python projects don't carry the ~700MB chrom
 
 ### python-ui image
 
-**Projects declare their own playwright.** The image deliberately does **not** provide an importable Python `playwright` library — the CLI is an isolated uv tool, so `python -c 'import playwright'` fails by design. A consuming project declares playwright as its own (dev) dependency and `uv sync`s it in-tree; the image contributes the baked browser revision, the browser OS deps, and the standalone CLI. Because browser builds are keyed to the playwright version, `/opt/playwright` is left writable by the `ralph` user: a project pinning a different playwright version self-installs its matching browser revision into the same cache path at run time (the baked chromium serves the common case download-free).
+**Projects declare their own playwright.** The image deliberately does **not** provide an importable Python `playwright` library — the CLI is an isolated uv tool, so `python -c 'import playwright'` fails by design. A consuming project declares playwright as its own (dev) dependency and `uv sync`s it in-tree; the image contributes the baked browser revision, the browser OS deps, and the standalone CLI.
+
+**Version skew needs an explicit browser install.** Installing a playwright package does **not** download a browser: browser builds are keyed to the playwright version, and only the `PLAYWRIGHT_VERSION` revision is baked. A project pinning any **other** version must run `uv run playwright install chromium` as part of its environment setup or e2e command (e.g. the first step of a `make e2e` target) — the command no-ops when the matching revision is already present, and it works in-container because egress exists and `/opt/playwright` is writable by the `ralph` user. The baked chromium serves the `PLAYWRIGHT_VERSION` common case download-free.
 
 **Two-tier base resolution.** `dockerfiles/python-ui/Dockerfile` layers `FROM ${BASE_IMAGE}`:
 
 - The **default** is the published `docker.io/davesnowdon/ralph-sandbox:python`, so clean-host builds — `bin/ralph-sandbox --variant python-ui --build`, a plain `docker build`, CI PR validation — resolve by pulling the published base.
 - The **make targets** (`make check VARIANT=python-ui` etc.) build the python base from the current checkout first and pass `--build-arg BASE_IMAGE=ralph-sandbox:python-test`, so local builds and CI test the source tree, not the last release. `docker-compose.yml` passes `BASE_IMAGE` through from the environment for the same purpose (unset ⇒ the published default applies).
+
+**Inherited build arguments are fixed by the base.** The agent/base build args (`NODE_MAJOR`, `RALPH_REF`, `RALPH_UID`/`RALPH_GID`, `CLAUDE_CODE_VERSION`, `CODEX_VERSION`) only take effect when a *base* image is built; a python-ui build starts `FROM` the already-built `BASE_IMAGE`, so they cannot affect it. With the published default they are fixed at the published image's values — notably the `ralph` user stays UID/GID 1000, so on a host whose user is not 1000 a bind-mounted project may not be writable in-container. To customize, build a local python base with the desired args first, then point `BASE_IMAGE` at it:
+
+```bash
+docker build -f dockerfiles/python/Dockerfile \
+  --build-arg RALPH_UID="$(id -u)" --build-arg RALPH_GID="$(id -g)" \
+  -t ralph-sandbox:python-custom .
+BASE_IMAGE=ralph-sandbox:python-custom bin/ralph-sandbox --variant python-ui --build
+```
 
 **/dev/shm.** Chromium can exhaust Docker's default 64MB `/dev/shm` under real e2e load, so the compose services set a bounded `shm_size: 1gb` (not `ipc: host` — this is a hardened sandbox).
 
