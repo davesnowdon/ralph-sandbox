@@ -40,7 +40,13 @@ USER root
 # setup or e2e command (it no-ops when the matching revision is already
 # present). That works because egress exists and /opt/playwright is left
 # ralph-writable on purpose; the baked chromium serves the PLAYWRIGHT_VERSION
-# common case download-free.
+# common case download-free. The limit: that command runs as ralph and
+# installs BROWSER FILES only — it cannot add system packages (root-installed
+# at build time via --with-deps, keyed to PLAYWRIGHT_VERSION), so the pinned
+# version must stay compatible with the baked OS deps. Nearby versions are
+# likely fine (1.61.0 verified against the 1.62.0 deps); substantially
+# older/newer is not guaranteed — for those, rebuild this image with a
+# matching PLAYWRIGHT_VERSION build-arg.
 #
 # PLAYWRIGHT_VERSION is pinned so the baked browser revision is reproducible
 # (the chromium revision is derived from the playwright version). Upgrades are
