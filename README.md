@@ -4,9 +4,10 @@ A Docker-based sandbox for running the [Ralph](https://github.com/snarktank/ralp
 
 Ralph is an autonomous agent loop that iteratively implements software features by reading a structured PRD (`prd.json`), selecting the highest-priority incomplete story, implementing it, running quality checks, committing changes, and repeating until all stories pass. Each iteration spawns a fresh AI instance with clean context -- only git history, a learnings file (`progress.txt`), and task statuses carry forward between iterations.
 
-This sandbox wraps Ralph in a hardened Docker container, making it straightforward to point at any project directory and let Ralph work autonomously. Three image variants are provided:
+This sandbox wraps Ralph in a hardened Docker container, making it straightforward to point at any project directory and let Ralph work autonomously. Four image variants are provided:
 
 - **`python`** (default) — modern Python tooling (uv, hatch, ruff, pytest, mypy, pyright, coverage) plus SAST (bandit, pip-audit, semgrep).
+- **`python-ui`** — everything in `python` plus a headless browser for web-UI e2e evaluation (playwright + chromium). Layered on the `python` image; select it for projects whose checks or agents need to drive a real browser.
 - **`crosstool-ng`** — a cross-compilation toolchain build environment built around [crosstool-ng](https://crosstool-ng.github.io/), for producing GCC cross-toolchains.
 - **`cpp`** — a native + cross C/C++ application dev environment: GCC **and** Clang, CMake/Ninja/Meson, Conan, gdb/lldb, and clang-tidy/clang-format/cppcheck/valgrind. Can mount a cross toolchain (see [cpp image](#cpp-image)) to build for non-host targets.
 
@@ -197,6 +198,7 @@ The custom runner **can assume**:
 - Git is configured and functional
 - Shared CLI tools are available on **all** variants: `claude`, `codex`, `node`, `bash`, `git`, `make`, `jq`
   - the **python** image adds: `python`, `uv`, `hatch`, `ruff`, `pytest`, `mypy`, `pyright`, `coverage`, `bandit`, `pip-audit`, `semgrep`
+  - the **python-ui** image adds everything in **python** plus `playwright` (headless chromium baked at `PLAYWRIGHT_BROWSERS_PATH=/opt/playwright`)
   - the **crosstool-ng** image adds: `ct-ng`, `gcc`, `g++`, `python3`, and the crosstool-ng host build toolchain (`bison`, `flex`, `gawk`, `makeinfo`, `libtool`, …)
   - the **cpp** image adds: `gcc`/`g++`, `clang`/`clang++`, `cmake`, `ninja`, `meson`, `pkg-config`, `conan`, `gdb`/`lldb`, `clang-tidy`, `clang-format`, `cppcheck`, `valgrind`, `ccache`, and `cross-env`
 - All environment variables (`PROJECT_DIR`, `RALPH_TOOL`, config dirs) are available but `RALPH_TOOL` and tool config dirs are **not validated** -- the custom runner decides what it needs
@@ -273,7 +275,7 @@ There is no Docker Hub `:latest` tag — with more than one image variant it wou
 
 ### What's included
 
-Shared across both variants (installed by `dockerfiles/common/install-agents.sh`):
+Shared across all variants (installed by `dockerfiles/common/install-agents.sh`):
 
 - **Node.js 20** (runtime for the agent CLIs)
 - **Claude Code CLI** (`@anthropic-ai/claude-code`)
@@ -286,6 +288,12 @@ Shared across both variants (installed by `dockerfiles/common/install-agents.sh`
 - **Python 3.12** (slim base)
 - **Python tooling**: uv, hatch, ruff, pytest, mypy, pyright, coverage
 - **SAST / security tooling**: bandit, pip-audit, semgrep
+
+**python-ui** image (`davesnowdon/ralph-sandbox:python-ui`) — layered `FROM` the python image, adding:
+
+- **Headless browser e2e**: playwright CLI + chromium (with OS deps), baked at the fixed non-`$HOME` path `PLAYWRIGHT_BROWSERS_PATH=/opt/playwright` so per-run home/config mounts can't shadow it; the dir is user-writable so a project pinning a different playwright version can self-install its matching browser revision at run time. Headless only — no X/VNC.
+
+Kept separate from `python` so pure-Python projects don't carry the ~700MB chromium + X11-library tail.
 
 **crosstool-ng** image (`davesnowdon/ralph-sandbox:crosstool-ng`):
 

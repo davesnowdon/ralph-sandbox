@@ -6,8 +6,10 @@
 # to scope a target to a single image (used by the CI matrix and for fast local
 # iteration). VARIANT selects dockerfiles/$(VARIANT)/Dockerfile for the
 # single-image (_-prefixed) targets.
-# Supported: python (default), crosstool-ng, cpp.
-VARIANTS := python crosstool-ng cpp
+# Supported: python (default), python-ui, crosstool-ng, cpp.
+# Order matters: python-ui layers FROM the python build image, so python is
+# listed (and therefore built) first when fanning out over all variants.
+VARIANTS := python python-ui crosstool-ng cpp
 VARIANT ?= python
 
 # An explicit, non-empty VARIANT (command line or environment) scopes the
@@ -38,9 +40,11 @@ DOCKERFILE := dockerfiles/$(VARIANT)/Dockerfile
 BUILD_IMAGE := ralph-sandbox:$(VARIANT)-test
 
 # Tools the entrypoint test asserts are present for the non-root ralph user.
-# The python image ships the Python dev/SAST stack; the crosstool-ng image
-# ships the cross-compilation toolchain build environment.
+# The python image ships the Python dev/SAST stack; python-ui adds the
+# headless-browser e2e layer on top of it; the crosstool-ng image ships the
+# cross-compilation toolchain build environment.
 EXPECTED_TOOLS_python := make pyright uv ruff pytest mypy hatch coverage bandit pip-audit semgrep
+EXPECTED_TOOLS_python-ui := $(EXPECTED_TOOLS_python) playwright
 EXPECTED_TOOLS_crosstool-ng := claude codex node python3 git make ct-ng gcc g++ bison flex makeinfo
 EXPECTED_TOOLS_cpp := claude codex node git make cmake ninja meson pkg-config gcc g++ clang clang++ clang-tidy clang-format cppcheck gdb ccache conan cross-env
 EXPECTED_TOOLS := $(EXPECTED_TOOLS_$(VARIANT))
@@ -96,6 +100,16 @@ push:
 	done
 
 # --- Single-image targets (operate on exactly one $(VARIANT)) ---------------
+
+# python-ui layers FROM the python build image, so building it (including a
+# standalone `make ... VARIANT=python-ui`) first refreshes the python base.
+ifeq ($(VARIANT),python-ui)
+_docker-build: _build-base-python
+.PHONY: _build-base-python
+_build-base-python:
+	@echo "==> docker-build (python base for python-ui)"
+	@$(MAKE) --no-print-directory _docker-build VARIANT=python
+endif
 
 _docker-build:
 	docker build -t $(BUILD_IMAGE) -f $(DOCKERFILE) .

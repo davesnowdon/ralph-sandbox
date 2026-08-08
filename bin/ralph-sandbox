@@ -13,7 +13,7 @@ Usage:
 Options:
   --project-dir PATH        Use an existing project directory. Defaults to the current git root or cwd.
   --tool NAME               Tool to use: claude or codex. Defaults to $RALPH_TOOL or claude.
-  --variant NAME            Image variant to run: python, crosstool-ng or cpp. Defaults to python.
+  --variant NAME            Image variant to run: python, python-ui, crosstool-ng or cpp. Defaults to python.
   --toolchain-dir PATH      (cpp) Mount a cross toolchain read-only; exposed in-container as $CROSS_TOOLCHAIN_DIR.
   --session-runner PATH     Custom runner script to replace the built-in Ralph loop.
   --claude-config-dir PATH  Claude config directory. Defaults to $CLAUDE_CONFIG_DIR or $HOME/.claude.
@@ -158,6 +158,10 @@ case "${variant}" in
     sandbox_image="ralph-sandbox:python"
     sandbox_dockerfile="dockerfiles/python/Dockerfile"
     ;;
+  python-ui)
+    sandbox_image="ralph-sandbox:python-ui"
+    sandbox_dockerfile="dockerfiles/python-ui/Dockerfile"
+    ;;
   crosstool-ng)
     sandbox_image="ralph-sandbox:crosstool-ng"
     sandbox_dockerfile="dockerfiles/crosstool-ng/Dockerfile"
@@ -167,7 +171,7 @@ case "${variant}" in
     sandbox_dockerfile="dockerfiles/cpp/Dockerfile"
     ;;
   *)
-    echo "ERROR: Unsupported variant: ${variant}. Use 'python', 'crosstool-ng' or 'cpp'." >&2
+    echo "ERROR: Unsupported variant: ${variant}. Use 'python', 'python-ui', 'crosstool-ng' or 'cpp'." >&2
     exit 2
     ;;
 esac
