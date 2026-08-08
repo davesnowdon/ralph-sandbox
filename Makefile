@@ -1,4 +1,4 @@
-.PHONY: lint fmt-check docker-build test check tag push \
+.PHONY: lint fmt-check compose-config-test docker-build test check tag push \
 	_docker-build _test _tag _push
 
 # Image variants. The docker-build/test/check/tag/push targets run across ALL
@@ -34,6 +34,7 @@ $(error Unknown VARIANT '$(UNKNOWN_VARIANTS)'. Supported: $(VARIANTS))
 endif
 
 SHELL_FILES := bin/ralph-sandbox tests/test-entrypoint.sh \
+	tests/test-compose-config.sh \
 	dockerfiles/common/ralph-entrypoint.sh dockerfiles/common/install-agents.sh \
 	dockerfiles/cpp/cross-env.sh
 DOCKERFILE := dockerfiles/$(VARIANT)/Dockerfile
@@ -68,6 +69,11 @@ lint:
 fmt-check:
 	shfmt -d -i 2 -ci $(SHELL_FILES)
 
+# Static docker-compose.yml contract checks (shm_size, BASE_IMAGE passthrough).
+# Needs docker but no image build, so `check` runs it before the build+test loop.
+compose-config-test:
+	tests/test-compose-config.sh
+
 # Aggregate targets fan out over $(SELECTED_VARIANTS) -- every image by default,
 # or just the one named by VARIANT. Each variant is delegated to the matching
 # single-image `_`-prefixed target through a recursive make.
@@ -83,7 +89,7 @@ test:
 	  $(MAKE) --no-print-directory _test VARIANT=$$v || exit $$?; \
 	done
 
-check: lint fmt-check
+check: lint fmt-check compose-config-test
 	@for v in $(SELECTED_VARIANTS); do \
 	  echo "==> check: build + test ($$v)"; \
 	  $(MAKE) --no-print-directory _test VARIANT=$$v || exit $$?; \
