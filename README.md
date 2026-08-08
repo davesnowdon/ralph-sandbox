@@ -86,7 +86,13 @@ ralph-sandbox --variant cpp
 ralph-sandbox --variant cpp --toolchain-dir ~/x-tools/aarch64-unknown-linux-gnu
 ```
 
-`--variant` selects which image the wrapper builds/runs (`python` by default, or `crosstool-ng` / `cpp`). It is independent of `--tool`: every variant supports `claude` and `codex`. See [crosstool-ng image](#crosstool-ng-image) and [cpp image](#cpp-image) for variant-specific guidance.
+To run the web-UI image (python plus headless playwright/chromium):
+
+```bash
+ralph-sandbox --variant python-ui
+```
+
+`--variant` selects which image the wrapper builds/runs (`python` by default, or `python-ui` / `crosstool-ng` / `cpp`). It is independent of `--tool`: every variant supports `claude` and `codex`. See [python-ui image](#python-ui-image), [crosstool-ng image](#crosstool-ng-image) and [cpp image](#cpp-image) for variant-specific guidance.
 
 By default the wrapper:
 
@@ -161,13 +167,15 @@ PROJECT_DIR=/absolute/path/to/your/project docker compose run ralph-login
 
 | Argument | Default | Description |
 |---|---|---|
-| `NODE_MAJOR` | `20` | Node.js major version (both variants) |
-| `RALPH_REF` | `6c53cb0` | Pinned upstream Ralph commit used by default (both variants) |
-| `RALPH_UID` | `1000` | UID for the non-root `ralph` user inside the container (both variants) |
-| `RALPH_GID` | `1000` | GID for the non-root `ralph` group inside the container (both variants) |
-| `CLAUDE_CODE_VERSION` | `2.1.177` | Pinned Claude Code CLI version (both variants) |
-| `CODEX_VERSION` | `0.139.0` | Pinned OpenAI Codex CLI version (both variants) |
+| `NODE_MAJOR` | `20` | Node.js major version (all variants) |
+| `RALPH_REF` | `6c53cb0` | Pinned upstream Ralph commit used by default (all variants) |
+| `RALPH_UID` | `1000` | UID for the non-root `ralph` user inside the container (all variants) |
+| `RALPH_GID` | `1000` | GID for the non-root `ralph` group inside the container (all variants) |
+| `CLAUDE_CODE_VERSION` | `2.1.177` | Pinned Claude Code CLI version (all variants) |
+| `CODEX_VERSION` | `0.139.0` | Pinned OpenAI Codex CLI version (all variants) |
 | `CROSSTOOL_NG_VERSION` | `1.28.0` | Pinned crosstool-ng release (crosstool-ng image only) |
+| `BASE_IMAGE` | `docker.io/davesnowdon/ralph-sandbox:python` | (python-ui only) The python image that python-ui layers `FROM`. See [python-ui image](#python-ui-image) for the two-tier resolution. |
+| `PLAYWRIGHT_VERSION` | `1.62.0` | (python-ui only) Pinned playwright CLI version; the baked chromium revision derives from it. Upgrades are deliberate and validated by the python-ui browser smoke test. |
 
 To pin Ralph to a specific version:
 
@@ -261,15 +269,16 @@ bin/ralph-sandbox \
 
 ## CI/CD
 
-Each image variant has its own build workflow (`publish-python.yml`, `publish-crosstool-ng.yml`, `publish-cpp.yml`). Pull requests build the affected image(s) to validate they still compile. Docker Hub pushes only happen from GitHub Releases:
+Each base image variant has its own build workflow (`publish-python.yml`, `publish-crosstool-ng.yml`, `publish-cpp.yml`); **python-ui** is built and published by a chained job inside `publish-python.yml`, since it layers `FROM` the python image (on release it pins the just-pushed python base by digest; on pull requests it validates against the published base — the clean-host contract). Pull requests build the affected image(s) to validate they still compile. Docker Hub pushes only happen from GitHub Releases:
 
 - the **python** image publishes `davesnowdon/ralph-sandbox:python` and `:<release-tag>`
+- the **python-ui** image publishes `davesnowdon/ralph-sandbox:python-ui` and `:python-ui-<release-tag>`
 - the **crosstool-ng** image publishes `davesnowdon/ralph-sandbox:crosstool-ng` and `:crosstool-ng-<release-tag>`
 - the **cpp** image publishes `davesnowdon/ralph-sandbox:cpp` and `:cpp-<release-tag>`
 
 There is no Docker Hub `:latest` tag — with more than one image variant it would be ambiguous. Repo scripts and the compose default use the local `ralph-sandbox:python` tag. `make tag` additionally stamps a local `ralph-sandbox:latest` alias, kept only for backward-compatibility with external local scripts that still reference it.
 
-`make check` covers **every** image variant by default — it lints the shell files once, then builds each image and runs the entrypoint integration suite against it. Pass `VARIANT=<name>` to scope a run to a single image; CI uses that to fan the variants out across a matrix (`make check VARIANT=python`, `VARIANT=crosstool-ng`, `VARIANT=cpp`). The same fan-out applies to `make docker-build`, `make test`, `make tag`, and `make push`.
+`make check` covers **every** image variant by default — it lints the shell files once, then builds each image and runs the entrypoint integration suite against it. Pass `VARIANT=<name>` to scope a run to a single image; CI uses that to fan the variants out across a matrix (`make check VARIANT=python`, `VARIANT=python-ui`, `VARIANT=crosstool-ng`, `VARIANT=cpp`). The same fan-out applies to `make docker-build`, `make test`, `make tag`, and `make push`.
 
 ## Container Details
 
@@ -291,9 +300,9 @@ Shared across all variants (installed by `dockerfiles/common/install-agents.sh`)
 
 **python-ui** image (`davesnowdon/ralph-sandbox:python-ui`) — layered `FROM` the python image, adding:
 
-- **Headless browser e2e**: playwright CLI + chromium (with OS deps), baked at the fixed non-`$HOME` path `PLAYWRIGHT_BROWSERS_PATH=/opt/playwright` so per-run home/config mounts can't shadow it; the dir is user-writable so a project pinning a different playwright version can self-install its matching browser revision at run time. Headless only — no X/VNC.
+- **Headless browser e2e**: playwright CLI (pinned via `PLAYWRIGHT_VERSION`) + chromium (with OS deps), baked at the fixed non-`$HOME` path `PLAYWRIGHT_BROWSERS_PATH=/opt/playwright` so per-run home/config mounts can't shadow it. Headless only — no X/VNC.
 
-Kept separate from `python` so pure-Python projects don't carry the ~700MB chromium + X11-library tail.
+Kept separate from `python` so pure-Python projects don't carry the ~700MB chromium + X11-library tail. See [python-ui image](#python-ui-image) for its base-image and playwright contracts.
 
 **crosstool-ng** image (`davesnowdon/ralph-sandbox:crosstool-ng`):
 
@@ -308,6 +317,17 @@ Kept separate from `python` so pure-Python projects don't carry the ~700MB chrom
 - **Package manager**: Conan 2
 - **Debug + analysis**: gdb, lldb, clang-tidy, clang-format, cppcheck, valgrind, ccache
 - **Cross-compilation**: `cross-env` helper + mountable toolchain (see below)
+
+### python-ui image
+
+**Projects declare their own playwright.** The image deliberately does **not** provide an importable Python `playwright` library — the CLI is an isolated uv tool, so `python -c 'import playwright'` fails by design. A consuming project declares playwright as its own (dev) dependency and `uv sync`s it in-tree; the image contributes the baked browser revision, the browser OS deps, and the standalone CLI. Because browser builds are keyed to the playwright version, `/opt/playwright` is left writable by the `ralph` user: a project pinning a different playwright version self-installs its matching browser revision into the same cache path at run time (the baked chromium serves the common case download-free).
+
+**Two-tier base resolution.** `dockerfiles/python-ui/Dockerfile` layers `FROM ${BASE_IMAGE}`:
+
+- The **default** is the published `docker.io/davesnowdon/ralph-sandbox:python`, so clean-host builds — `bin/ralph-sandbox --variant python-ui --build`, a plain `docker build`, CI PR validation — resolve by pulling the published base.
+- The **make targets** (`make check VARIANT=python-ui` etc.) build the python base from the current checkout first and pass `--build-arg BASE_IMAGE=ralph-sandbox:python-test`, so local builds and CI test the source tree, not the last release. `docker-compose.yml` passes `BASE_IMAGE` through from the environment for the same purpose (unset ⇒ the published default applies).
+
+**/dev/shm.** Chromium can exhaust Docker's default 64MB `/dev/shm` under real e2e load, so the compose services set a bounded `shm_size: 1gb` (not `ipc: host` — this is a hardened sandbox).
 
 ### crosstool-ng image
 
