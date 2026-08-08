@@ -221,32 +221,43 @@ fi
 
 if [[ "${VARIANT}" == "python-ui" ]]; then
   echo
-  echo "==> Test 8: (python-ui) headless chromium renders DOM as ralph, hardened"
+  echo "==> Test 8: (python-ui) playwright driver renders DOM as ralph, hardened"
   # Proves the browser layer actually works, not just that the CLI is on PATH:
   # runs as the image's default non-root ralph user under the same hardening
-  # docker-compose.yml applies (all capabilities dropped, no privilege
-  # escalation), launches the baked chromium headlessly on a data: URL, and
-  # asserts the expected text in the dumped DOM. Also asserts the baked
-  # PLAYWRIGHT_BROWSERS_PATH contract: fixed /opt/playwright location, writable
-  # by ralph so a project pinning its own playwright can self-install a
-  # matching browser revision into the cache at run time.
-  # --no-sandbox: chromium's own sandbox needs privileges the hardened
-  # container deliberately withholds; the container is the sandbox here.
+  # and /dev/shm sizing docker-compose.yml applies (all capabilities dropped,
+  # no privilege escalation, shm_size 1gb — no --disable-dev-shm-usage escape
+  # hatch), and launches chromium through the playwright driver — the same
+  # launch path a consuming project's pytest suite uses — via the interpreter
+  # of the isolated uv tool environment (the image deliberately ships no
+  # importable playwright in the base python env). Renders a data: URL and
+  # asserts the expected text in the DOM plus a clean close. Also asserts the
+  # baked PLAYWRIGHT_BROWSERS_PATH contract: fixed /opt/playwright location,
+  # writable by ralph so a project pinning a different playwright version can
+  # run `uv run playwright install chromium` to add its matching revision.
   OUTPUT="$(docker run --rm --cap-drop ALL --security-opt no-new-privileges \
+    --shm-size 1g \
     --entrypoint bash "${IMAGE}" -c '
       set -euo pipefail
       echo "BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-unset}"
       if [[ -w "${PLAYWRIGHT_BROWSERS_PATH:-/nonexistent}" ]]; then
         echo "BROWSERS_PATH_WRITABLE"
       fi
-      chrome="$(find "${PLAYWRIGHT_BROWSERS_PATH:-/nonexistent}" -maxdepth 3 \
-        -type f -name chrome | sort | head -1)"
-      if [[ -z "${chrome}" ]]; then
-        echo "NO_CHROMIUM_BINARY"
+      py="$(uv tool dir)/playwright/bin/python"
+      if [[ ! -x "${py}" ]]; then
+        echo "NO_PLAYWRIGHT_TOOL_ENV"
         exit 1
       fi
-      "${chrome}" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
-        --dump-dom "data:text/html,<title>t</title><p id=smoke>RALPH_UI_SMOKE_OK</p>"
+      "${py}" - <<PYEOF
+from playwright.sync_api import sync_playwright
+
+with sync_playwright() as p:
+    browser = p.chromium.launch()
+    page = browser.new_page()
+    page.goto("data:text/html,<title>t</title><p id=smoke>RALPH_UI_SMOKE_OK</p>")
+    print("DOM:" + page.content())
+    browser.close()
+print("LAUNCH_CLEAN")
+PYEOF
     ' 2>&1)" && RC=0 || RC=$?
 
   if echo "${OUTPUT}" | grep -q "BROWSERS_PATH=/opt/playwright"; then
@@ -256,15 +267,17 @@ if [[ "${VARIANT}" == "python-ui" ]]; then
   fi
 
   if echo "${OUTPUT}" | grep -q "BROWSERS_PATH_WRITABLE"; then
-    log_pass "/opt/playwright writable by ralph (per-project browser self-install)"
+    log_pass "/opt/playwright writable by ralph (playwright install for other versions)"
   else
     log_fail "/opt/playwright not writable by ralph. Output: ${OUTPUT}"
   fi
 
-  if [[ ${RC} -eq 0 ]] && echo "${OUTPUT}" | grep -q 'id="smoke">RALPH_UI_SMOKE_OK'; then
-    log_pass "Headless chromium rendered the page and exited cleanly (hardened, as ralph)"
+  if [[ ${RC} -eq 0 ]] &&
+    echo "${OUTPUT}" | grep -q 'id="smoke">RALPH_UI_SMOKE_OK' &&
+    echo "${OUTPUT}" | grep -q "LAUNCH_CLEAN"; then
+    log_pass "Playwright driver launched chromium, rendered the DOM, closed cleanly (hardened, as ralph)"
   else
-    log_fail "Headless chromium render failed (rc=${RC}). Output: ${OUTPUT}"
+    log_fail "Playwright driver launch failed (rc=${RC}). Output: ${OUTPUT}"
   fi
 fi
 
