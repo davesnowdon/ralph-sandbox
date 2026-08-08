@@ -11,10 +11,22 @@ services:
         RALPH_REF: "6c53cb0"
         RALPH_UID: "${UID:-1000}"
         RALPH_GID: "${RALPH_GID:-1000}"
+        # Consumed only by dockerfiles/python-ui/Dockerfile (the image it layers
+        # FROM). Null-form passthrough on purpose: when $BASE_IMAGE is unset the
+        # arg is NOT passed and the Dockerfile default — the published
+        # docker.io/davesnowdon/ralph-sandbox:python — applies, so
+        # `bin/ralph-sandbox --variant python-ui --build` works on a clean host.
+        # Set BASE_IMAGE=ralph-sandbox:python-test to layer on a locally built
+        # base (what the Makefile does). Ignored by the other variants.
+        BASE_IMAGE:
 
     image: ${SANDBOX_IMAGE:-ralph-sandbox:python}
 
     init: true
+    # Chromium in the python-ui variant needs more than Docker's default 64MB
+    # /dev/shm under real e2e load. A bounded shm_size (not ipc:host — this is a
+    # hardened sandbox) covers it; harmless for the other variants.
+    shm_size: 1gb
     working_dir: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
 
     volumes:
@@ -46,6 +58,7 @@ services:
     build: *sandbox_build
     image: ${SANDBOX_IMAGE:-ralph-sandbox:python}
     init: true
+    shm_size: 1gb
     entrypoint: ["/bin/bash"]
     working_dir: ${PROJECT_DIR:?Set PROJECT_DIR to an absolute path}
     volumes:
