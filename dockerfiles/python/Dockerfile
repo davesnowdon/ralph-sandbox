@@ -38,8 +38,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ---- Shared agent runtime (Node + Claude Code + Codex + Ralph + user + git) ----
-ARG CLAUDE_CODE_VERSION=2.1.177
-ARG CODEX_VERSION=0.139.0
+ARG CLAUDE_CODE_VERSION=2.1.229
+ARG CODEX_VERSION=0.147.0
 COPY dockerfiles/common/install-agents.sh /tmp/install-agents.sh
 RUN NODE_MAJOR="${NODE_MAJOR}" \
     RALPH_REF="${RALPH_REF}" \
