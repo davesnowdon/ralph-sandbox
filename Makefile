@@ -1,4 +1,4 @@
-.PHONY: lint fmt-check compose-config-test docker-build test check tag push \
+.PHONY: lint fmt-check compose-config-test bump-test docker-build test check tag push \
 	_docker-build _test _tag _push
 
 # Image variants. The docker-build/test/check/tag/push targets run across ALL
@@ -35,6 +35,7 @@ endif
 
 SHELL_FILES := bin/ralph-sandbox tests/test-entrypoint.sh \
 	tests/test-compose-config.sh \
+	scripts/bump-agent-clis.sh tests/test-bump-agent-clis.sh \
 	dockerfiles/common/ralph-entrypoint.sh dockerfiles/common/install-agents.sh \
 	dockerfiles/cpp/cross-env.sh
 DOCKERFILE := dockerfiles/$(VARIANT)/Dockerfile
@@ -74,6 +75,11 @@ fmt-check:
 compose-config-test:
 	tests/test-compose-config.sh
 
+# scripts/bump-agent-clis.sh against a fake npm and a throwaway tree (no
+# network, no docker). The script itself runs from bump-agent-clis.yml.
+bump-test:
+	tests/test-bump-agent-clis.sh
+
 # Aggregate targets fan out over $(SELECTED_VARIANTS) -- every image by default,
 # or just the one named by VARIANT. Each variant is delegated to the matching
 # single-image `_`-prefixed target through a recursive make.
@@ -89,7 +95,7 @@ test:
 	  $(MAKE) --no-print-directory _test VARIANT=$$v || exit $$?; \
 	done
 
-check: lint fmt-check compose-config-test
+check: lint fmt-check compose-config-test bump-test
 	@for v in $(SELECTED_VARIANTS); do \
 	  echo "==> check: build + test ($$v)"; \
 	  $(MAKE) --no-print-directory _test VARIANT=$$v || exit $$?; \

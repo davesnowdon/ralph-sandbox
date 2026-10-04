@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Lets bump-agent-clis.yml run CI on its bot-opened PR branch (a PR opened
+  # with GITHUB_TOKEN does not fire pull_request workflows).
+  workflow_dispatch:
 
 jobs:
   check:
