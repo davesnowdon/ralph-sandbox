@@ -1,0 +1,85 @@
+name: Bump agent CLIs
+
+# Keep the pinned claude-code / codex CLIs fresh. The pins make builds
+# reproducible, but a stale agent CLI fails in ways that look like model or
+# network trouble (2026-10-04: codex 0.147.0 stalled 5 minutes on every model
+# call until loom's reviewer turns timed out). Roughly every two weeks this
+# opens a PR moving the pins to the latest npm releases; CI proves the build.
+on:
+  schedule:
+    - cron: "17 6 1,15 * *" # 06:17 UTC on the 1st and 15th (~every two weeks)
+  workflow_dispatch:
+
+permissions:
+  contents: write # push the bump branch
+  pull-requests: write # open the PR
+  actions: write # dispatch the Check workflow on the branch
+
+concurrency:
+  group: bump-agent-clis
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node (for `npm view`)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # One bump PR at a time: an unmerged one is still the right next step,
+      # and stacking a second would only conflict with it.
+      - name: Skip when a bump PR is already open
+        id: open
+        run: |
+          n="$(gh pr list --state open --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("chore/auto-bump-agent-clis-"))] | length')"
+          echo "count=${n}" >>"${GITHUB_OUTPUT}"
+          if [ "${n}" != "0" ]; then echo "A bump PR is already open; nothing to do."; fi
+
+      - name: Bump pins to the latest npm releases
+        id: bump
+        if: steps.open.outputs.count == '0'
+        run: |
+          scripts/bump-agent-clis.sh | tee "${RUNNER_TEMP}/bump.txt"
+          if git diff --quiet; then
+            echo "changed=false" >>"${GITHUB_OUTPUT}"
+          else
+            echo "changed=true" >>"${GITHUB_OUTPUT}"
+          fi
+
+      - name: Open the bump PR and run CI on it
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          branch="chore/auto-bump-agent-clis-$(date -u +%Y-%m-%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "${branch}"
+          git commit -am "chore: bump agent CLIs to the latest npm releases" \
+            -m "$(cat "${RUNNER_TEMP}/bump.txt")"
+          git push -u origin "${branch}"
+          {
+            echo "Scheduled bump of the pinned agent CLIs to the latest npm releases:"
+            echo
+            echo '```'
+            cat "${RUNNER_TEMP}/bump.txt"
+            echo '```'
+            echo
+            echo "Before merging: the Check run below must be green. After merging,"
+            echo "rebuild and retag the local images (\`make check\` then \`make tag\`)"
+            echo "so lithos-loom's gate and agents pick up the new CLIs, then run one"
+            echo "real review to confirm the harness works end to end."
+          } >"${RUNNER_TEMP}/body.md"
+          gh pr create --base main --head "${branch}" \
+            --title "chore: bump agent CLIs ($(date -u +%Y-%m-%d))" \
+            --body-file "${RUNNER_TEMP}/body.md"
+          # A PR opened with GITHUB_TOKEN does not trigger pull_request
+          # workflows; workflow_dispatch is the documented exception, and its
+          # check runs attach to the branch head, so they show on the PR.
+          gh workflow run check.yml --ref "${branch}"

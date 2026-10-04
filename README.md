@@ -171,8 +171,8 @@ PROJECT_DIR=/absolute/path/to/your/project docker compose run ralph-login
 | `RALPH_REF` | `6c53cb0` | Pinned upstream Ralph commit used by default (base images¹) |
 | `RALPH_UID` | `1000` | UID for the non-root `ralph` user inside the container (base images¹) |
 | `RALPH_GID` | `1000` | GID for the non-root `ralph` group inside the container (base images¹) |
-| `CLAUDE_CODE_VERSION` | `2.1.177` | Pinned Claude Code CLI version (base images¹) |
-| `CODEX_VERSION` | `0.139.0` | Pinned OpenAI Codex CLI version (base images¹) |
+| `CLAUDE_CODE_VERSION` | see the `ARG` line | Pinned Claude Code CLI version (base images¹); kept current by the scheduled bump ([CI/CD](#cicd)) |
+| `CODEX_VERSION` | see the `ARG` line | Pinned OpenAI Codex CLI version (base images¹); kept current by the scheduled bump ([CI/CD](#cicd)) |
 | `CROSSTOOL_NG_VERSION` | `1.28.0` | Pinned crosstool-ng release (crosstool-ng image only) |
 | `BASE_IMAGE` | `docker.io/davesnowdon/ralph-sandbox:python` | (python-ui only) The python image that python-ui layers `FROM`. See [python-ui image](#python-ui-image) for the two-tier resolution. |
 | `PLAYWRIGHT_VERSION` | `1.62.0` | (python-ui only) Pinned playwright CLI version; the baked chromium revision derives from it. Upgrades are deliberate and validated by the python-ui browser smoke test. |
@@ -280,7 +280,9 @@ Each base image variant has its own build workflow (`publish-python.yml`, `publi
 
 There is no Docker Hub `:latest` tag — with more than one image variant it would be ambiguous. Repo scripts and the compose default use the local `ralph-sandbox:python` tag. `make tag` additionally stamps a local `ralph-sandbox:latest` alias, kept only for backward-compatibility with external local scripts that still reference it.
 
-`make check` covers **every** image variant by default — it lints the shell files once, runs the static compose-config contract tests (`tests/test-compose-config.sh`: `shm_size` on both services, `BASE_IMAGE` passthrough semantics), then builds each image and runs the entrypoint integration suite against it. Pass `VARIANT=<name>` to scope a run to a single image; CI uses that to fan the variants out across a matrix (`make check VARIANT=python`, `VARIANT=python-ui`, `VARIANT=crosstool-ng`, `VARIANT=cpp`). The same fan-out applies to `make docker-build`, `make test`, `make tag`, and `make push`.
+`make check` covers **every** image variant by default — it lints the shell files once, runs the static compose-config contract tests (`tests/test-compose-config.sh`: `shm_size` on both services, `BASE_IMAGE` passthrough semantics) and the bump-script tests (`tests/test-bump-agent-clis.sh`, against a fake npm), then builds each image and runs the entrypoint integration suite against it. Pass `VARIANT=<name>` to scope a run to a single image; CI uses that to fan the variants out across a matrix (`make check VARIANT=python`, `VARIANT=python-ui`, `VARIANT=crosstool-ng`, `VARIANT=cpp`). The same fan-out applies to `make docker-build`, `make test`, `make tag`, and `make push`.
+
+**Scheduled agent-CLI bump.** `bump-agent-clis.yml` runs on the 1st and 15th of each month (and on demand from the Actions tab). It runs `scripts/bump-agent-clis.sh`, which moves every Dockerfile's `ARG CLAUDE_CODE_VERSION` / `ARG CODEX_VERSION` pin to the latest npm release, and opens a `chore/auto-bump-agent-clis-<date>` PR, skipping the run while an earlier bump PR is still open. A PR opened with the workflow's own token does not fire `pull_request` workflows, so the job dispatches `check.yml` on the branch; those check runs show on the PR. The pins keep builds reproducible; the schedule keeps them from going stale. A stale codex CLI once stalled every model call for five minutes. After merging a bump, rebuild and retag locally (`make check`, then `make tag`) so local consumers pick it up. Run `scripts/bump-agent-clis.sh --check` to see whether a bump is due (exit 3) without changing anything. **Repo setting required:** *Settings → Actions → General → Workflow permissions → "Allow GitHub Actions to create and approve pull requests"* must be on, or the job pushes the branch but cannot open the PR.
 
 ## Container Details
 
